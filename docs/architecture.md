@@ -9,15 +9,15 @@ ICAA is a serverless platform:
 - **One data store per service** — DynamoDB (single-table design), plus S3 for uploaded assets and Stripe for any money motion.
 - **A set of shared Go libraries** (`auth`, `middleware`, `captcha`, `email`, `payments`, `telemetry`) consumed by the services as semver-tagged modules.
 
-There is no central monolith and no message bus; services communicate only through shared external systems (DynamoDB tables, Stripe, MailerLite, etc.) and via the shared auth cookies.
+There is no central monolith and no message bus. Each service owns its own DynamoDB table and never calls another service directly; coupling is limited to the shared auth cookies and external systems (Stripe, MailerLite, SES, Turnstile, Google).
 
 ```mermaid
 flowchart TB
-    Browser["<b>Browser</b>"] -->|"icaa.world"| Pages["Cloudflare Pages<br/>(React 19 SPA, static)"]
+    Browser["<b>Browser</b>"] -->|"icaa.world"| Pages["Cloudflare Pages<br/>(React SPA, static)"]
     Browser -->|"api.icaa.world/&lt;prefix&gt;/*"| GW["AWS API Gateway<br/>(7 HTTP APIs → Lambda)"]
     Browser -->|"assets.icaa.world/&lt;uuid&gt;.&lt;ext&gt;"| S3[(S3<br/>assets.icaa.world)]
 
-    subgraph AWS ["AWS us-east-1 (account 197461532156)"]
+    subgraph AWS ["AWS us-east-1"]
         GW --> L_login["login Lambda<br/>/login"]
         GW --> L_articles["articles-api Lambda<br/>/articles"]
         GW --> L_assets["assets-api Lambda<br/>/assets"]
@@ -54,7 +54,7 @@ flowchart TB
 | Layer | Component | Notes |
 |---|---|---|
 | Edge | Cloudflare | DNS, CDN, Turnstile, Pages hosting |
-| Frontend | `icaa.world` SPA | React 19, Vite, TanStack Query, openapi-fetch clients |
+| Frontend | `icaa.world` SPA | React, Vite, TanStack Query, openapi-fetch clients |
 | Gateway | API Gateway HTTP API per service | Each Lambda registers an API mapping with a path key on `api.icaa.world` |
 | Compute | Go Lambdas (Linux container, Lambda Web Adapter) | One function per service; ~128 MB, 10 s timeout |
 | Data | DynamoDB (per service) | Single-table design (`PK`/`SK` + `GSI1`), TTL + optimistic locking |
@@ -75,6 +75,8 @@ sequenceDiagram
     participant D as DynamoDB
     participant S as Stripe
     participant T as Turnstile
+    participant M as MailerSend
+    participant L as MailerLite
 
     B->>P: GET /events/:id
     P-->>B: SPA shell + data from API
@@ -107,4 +109,4 @@ sequenceDiagram
 - `assets.icaa.world` DNS/cert for the S3 bucket is not managed in the `infra` Terraform either.
 - `infra/README.md` is aspirational/stale (mentions an `icaa-api` gateway and a `terraform.tfvars.prod` that don't exist).
 - No CI/CD pipeline deploys anything — builds/tests in CI, deploys are manual (`sam deploy`, `terraform apply`, wrangler).
-- `donation-api` doesn't consume Stripe webhooks; payment completion is handled by the frontend and recorded in Stripe only.
+- `donation-api` doesn't consume Stripe webhooks; payment completion is handled by the frontend and recorded in Stripe only. It still requires `/stripeEndpointSecret` at startup, so the secret sits there unused until/unless a webhook is added.

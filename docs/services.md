@@ -3,95 +3,88 @@
 All backend services are Go, REST-ish, deployed as AWS Lambda container images via AWS SAM, mounted under `https://api.icaa.world/<prefix>`. They share this shape:
 
 - Hexagonal layout: `cmd/` (entrypoint/wiring), `api/` (handlers + OpenAPI validation), a domain package, `dynamo/` (DynamoDB repo).
-- OpenAPI spec in `spec/api.yaml`, generated server via `oapi-codegen`.
-- HTTP API route `{proxy+}` on a single Lambda function; prod adds `BaseNamePrefix(logger, "/<prefix>")` so spec paths (`/<prefix>/...`) match after gateway prefixing.
+- Each service declares its routes in an OpenAPI spec (`spec/api.yaml`, generated server via `oapi-codegen`), served live at `<prefix>/openapi.json` + Swagger UI. **This document describes what each service owns, not its routes** — for route-level detail, read the spec.
+- Common request behavior — OpenAPI validation, CORS, access logging, OTel tracing, Swagger UI — comes from the shared `middleware` library rather than per-service code.
 - Env vars come from SSM Parameter Store in prod; locally they come from `SAM local` env / `docker-compose`.
-- Middleware chain (common): OpenAPI validation → CORS → Swagger UI → access logging → OTel → trace flush.
 - Secrets available in every function: SSM `/jwtSigningKeys` and `/newrelic-license-key`.
 
-## Route index
+## At a glance
 
-| Service | Public routes | Admin routes |
+| Service | Base path | Owns |
 |---|---|---|
-| `login` | `POST /login/google`, `GET /login/session`, `DELETE /login/session`, `POST /login/refresh` | — |
-| `articles-api` | `GET /articles/v1`, `GET /articles/v1/{slug}` | CRUD under `/articles/v1`, `…/publish`, `…/unpublish` |
-| `assets-api` | `GET /assets/v1?path=`, `GET /assets/v1/by-path?path=` | `POST /assets/v1/folders`, `POST /assets/v1/upload-url`, `DELETE /assets/v1/by-path`, `POST /assets/v1/by-path/confirm`, `POST /assets/v1/by-path/replace-url` |
-| `donation-api` | `POST /donations/v1` | `GET /donations/v1`, `GET /donations/v1/per-state` |
-| `event-registration` | `GET /events/v1`, `GET /events/v1/{id}`, `POST /events/v1/{eventId}/register` (deprecated), `POST /events/v1/{eventId}/registrations`, `POST /events/v1/registration/webhook` (Stripe) | `POST /events/v1`, `PATCH /events/v1/{id}`, `GET /events/v1/{eventId}/registrations`, `POST /events/v1/admin/test-email`, `POST /events/v1/admin/test-mailerlite` |
-| `mailing-list-api` | `POST /mailing-list/signup` | — |
-| `voting-api` | `GET /voting/v1/polls`, `GET /voting/v1/polls/{id}`, `POST /voting/v1/polls/{id}/votes`, `GET /voting/v1/polls/{id}/results` | `POST /voting/v1/polls`, `PATCH /voting/v1/polls/{id}`, `DELETE /voting/v1/polls/{id}` |
+| `login` | `/login` | Sessions & auth cookies: Google OAuth exchange, token refresh, logout |
+| `articles-api` | `/articles` | Blog/news article CMS + publish workflow |
+| `assets-api` | `/assets` | Virtual folder/file management, presigned S3 uploads, CDN URLs |
+| `donation-api` | `/donations` | Creating one-off Stripe checkout sessions (Stripe is the store) |
+| `event-registration` | `/events` | Events, registrations, paid checkout, confirmation emails, MailerLite groups |
+| `mailing-list-api` | `/mailing-list` | Newsletter signups (MailerLite) |
+| `voting-api` | `/voting` | Polls with idempotent, captcha-protected ballots |
 
 ---
 
 ## login — `/login`
 
-Google OAuth exchange + session management. Issues the auth cookies used by every other service. See [auth.md](auth.md).
+Google OAuth exchange and session management. Issues the auth cookies every other service validates. See [auth.md](auth.md) for the full flow.
 
-- `POST /login/google` — accepts a Google ID token (`{ googleJWT }`), validates it (audience is the frontend's OAuth client), issues `ICAA_ACCESS_TOKEN` + `ICAA_REFRESH_TOKEN` cookies, returns `UserInfo`.
-- `GET /login/session` — current user from access cookie/bearer.
-- `DELETE /login/session` — logout (revokes refresh token, clears cookies).
-- `POST /login/refresh` — rotate refresh cookie into a new access + refresh pair.
+- Accepts a Google ID token from the frontend, validates it, and returns `UserInfo` plus `ICAA_ACCESS_TOKEN` / `ICAA_REFRESH_TOKEN` cookies; refresh rotates the pair, logout revokes + clears.
 - Storage: DynamoDB `login-api` — refresh-token records (`PK/SK = REFRESH_TOKEN#<id>`, TTL 30 d).
 - Env/SSM: `/jwtSigningKeys`, `/adminEmails`. Local default: everyone is admin.
+- Routes: `spec/api.yaml` in the `login` repo.
 
 ## articles-api — `/articles`
 
-Blog/news article CMS.
+Blog/news article CMS with a draft → published workflow.
 
-- `GET /articles/v1` (list published, paginated by cursor+limit), `GET /articles/v1/{slug}` (404 for drafts).
-- Admin: `POST /articles/v1` (draft by default, 409 duplicate slug), `PATCH /articles/v1/{slug}` (optimistic lock via `version`), `DELETE`, `POST …/publish`, `POST …/unpublish`.
+- Drafts by default; publishing is explicit; drafts 404 on the public read path; edits are optimistic-locked via `version`; duplicate slugs are rejected (409).
 - Storage: DynamoDB `articles-api`. Single item type `ARTICLE`; `PK/SK = ARTICLE#<slug>`; `GSI1PK = ARTICLE`, `GSI1SK = STATUS#<p>#<status>#UPDATED_AT#…` for status-filtered time-ordered listings.
 - Content body is Editor.js blocks serialized to JSON.
 - No external integrations.
+- Routes: `spec/api.yaml` in the `articles-api` repo.
 
 ## assets-api — `/assets`
 
 File/folder management for website content (images, PDFs, logos). All asset URLs on the site come from here.
 
-- Paths are virtual folders (`/images/carousel`, …). Upload non-admin flow:
-  1. `POST /assets/v1/upload-url` (admin) → S3 presigned POST + creates a `pending` file record (1 h TTL).
-  2. Browser uploads directly to S3.
-  3. `POST /assets/v1/by-path/confirm` (admin) → verifies with `HeadObject`, marks `confirmed`.
-- Listing: `GET /assets/v1?path=` returns `AdminAsset` for admins, trimmed `PublicAsset` otherwise. Get-one: `GET /assets/v1/by-path?path=`. Delete requires empty folder and removes S3 + DynamoDB item.
-- Storage: DynamoDB `assets-api` — mixed `FILE`/`FOLDER` items; `PK = PATH#<parent>`, `SK = NAME#<name>`; folders keep a `ContentCount`; `Version` optimistic locking. S3 `assets.icaa.world` (public-read, flat keys `<uuid><ext>`, ≤ 50 MB), CDN URL from `ASSETS_CDN_BASE_URL`.
+- Paths are virtual folders (`/images/carousel`, …). Assets upload **browser-direct to S3**: an admin call returns a presigned POST and creates a `pending` file record (1 h TTL), the browser uploads straight to S3, then an admin call verifies with `HeadObject` and marks it `confirmed`.
+- Listings show full `AdminAsset` data to admins and trimmed `PublicAsset` to everyone else; deleting a folder requires it to be empty and removes the S3 object + DynamoDB item.
+- Storage: DynamoDB `assets-api` — mixed `FILE`/`FOLDER` items; `PK = PATH#<parent>`, `SK = NAME#<name>`; folders keep a `ContentCount`; `Version` optimistic locking. S3 `assets.icaa.world` (public-read, flat keys `<uuid><ext>`, ≤ 50 MB), CDN URLs from `ASSETS_CDN_BASE_URL`.
+- Routes: `spec/api.yaml` in the `assets-api` repo.
 
 ## donation-api — `/donations`
 
 One-off donations via Stripe embedded checkout.
 
-- `POST /donations/v1` (public) — validates amount (≥ 100 minor units), creates Checkout session (`UIMode=EmbeddedPage`, `item_type=donation` metadata), returns `{ clientSecret }`; frontend runs embedded checkout and handles success itself (`/donation/success`).
-- `GET /donations/v1` (admin) — paginated Stripe-charge listing; `GET /donations/v1/per-state` — aggregate counts by state/currency from billing addresses.
-- Storage: none — all data lives in Stripe (searchable via PaymentIntent metadata). No webhooks consumed.
+- Validates the amount (≥ 100 minor units), creates a Checkout session (`UIMode=EmbeddedPage`, `item_type=donation` metadata), returns `{ clientSecret }`; the frontend runs the embedded checkout and handles success itself (`/donation/success`).
+- Storage: none — all data lives in Stripe (searchable via PaymentIntent metadata). No webhooks consumed (the endpoint secret is read at startup but unused — see [architecture.md](architecture.md)).
 - Env/SSM: `/stripeSecretKey`, `/stripeEndpointSecret`; returns to `STRIPE_RETURN_URL` (default `https://www.icaa.world/donation/success`).
+- Routes: `spec/api.yaml` in the `donation-api` repo.
 
 ## event-registration — `/events`
 
-The largest service: events, registrations, paid checkout, confirmations, mailing-list groups. This is the only service with write access to the Terraform-managed `event-registration` table.
+The largest service: events, registrations, paid checkout, confirmations, mailing-list groups. The only service with write access to the Terraform-managed `event-registration` table.
 
-- Event CRUD: public list (`GET /events/v1`, sorted by start time desc) + get (`GET /events/v1/{id}`); admin create/patch (create also provisions a MailerLite group for the event).
-- Registration flows:
-  - `POST /events/v1/{eventId}/register` — deprecated free signup.
-  - `POST /events/v1/{eventId}/registrations` — paid signup: Turnstile-checked, creates registration + intent + Stripe checkout in one transaction, returns `{ clientSecret, expiresAt, registration }`.
-  - `POST /events/v1/registration/webhook` — Stripe webhook (not in the OpenAPI spec): verifies `Stripe-Signature`, on `checkout.session.completed` marks registration paid, sends confirmation email (MailerSend, `info@icaa.world`), adds subscriber to the event's MailerLite group; on `expired` deletes the registration + intent.
-- Admin extras: `POST /admin/test-email`, `POST /admin/test-mailerlite`.
+- Event CRUD (public read, admin create/update; creating an event also provisions its MailerLite group) plus a paid registration flow: Turnstile-checked, creates registration + intent + Stripe checkout in one transaction, returns `{ clientSecret, expiresAt, registration }`. A deprecated free-signup route still exists.
+- A Stripe webhook (handled **outside** the OpenAPI spec) verifies `Stripe-Signature`: on `checkout.session.completed` it marks the registration paid, sends the confirmation email (MailerSend, `info@icaa.world`), and adds the subscriber to the event's MailerLite group; on `expired` it deletes the registration + intent. Admin test endpoints exercise email + MailerLite.
 - Storage: DynamoDB `event-registration`. Items (`EVENT#<id>`, `REGISTRATION#<email>` under the event, `REG_INTENT#<email>` for pending checkouts, 30-min expiry) — see [data.md](data.md).
 - Integrations: Stripe, MailerSend, MailerLite, Cloudflare Turnstile.
+- Routes: `spec/api.yaml` in the `event-registration` repo (except the webhook above).
 
 ## mailing-list-api — `/mailing-list`
 
 Public newsletter signup.
 
-- `POST /mailing-list/signup` — Turnstile-checked; finds-or-creates the "ICAA Mailing List" MailerLite group at startup, adds `{email, name?}`. Maps email-provider errors to 422/429/500.
+- Turnstile-checked; finds-or-creates the "ICAA Mailing List" MailerLite group at startup and adds `{email, name?}`. Maps email-provider errors to 422/429/500.
 - Storage: none. Env/SSM: `/mailerLiteApiKey`, `/cfTurnstileSecretKey`. No auth.
+- Routes: `spec/api.yaml` in the `mailing-list-api` repo.
 
 ## voting-api — `/voting`
 
 Polls (e.g. match MVP votes) with idempotent, captcha-protected ballot casting.
 
-- Polls: public `GET /voting/v1/polls` (+ `/{id}`) with computed status (`Upcoming|Active|Closed`); admin create/patch (`version` query param for optimistic lock)/delete.
-- `POST /voting/v1/polls/{id}/votes` — public; requires Turnstile header **and** an `Idempotency-Key` header. Vote record is checked before captcha so retries short-circuit; same key + different ballot → `409 IdempotencyConflict`. Validates against `min/maxSelections`/`maxSelectionsPerGroup` and the poll window.
-- `GET /voting/v1/polls/{id}/results` — result visibility gated by `resultsVisibility` (`Live|AfterClose|AdminOnly`) and `publicResultsLevel` (`Full|Percentages|Rankings|None`); admins always see full results.
+- Polls carry a computed status (`Upcoming|Active|Closed`); ballot casting requires a Turnstile token **and** an `Idempotency-Key` header. The vote record is checked before captcha so retries short-circuit; same key + different ballot → `409 IdempotencyConflict`. Selections are validated against `min/maxSelections`/`maxSelectionsPerGroup` and the poll window.
+- Results are gated by `resultsVisibility` (`Live|AfterClose|AdminOnly`) and `publicResultsLevel` (`Full|Percentages|Rankings|None`); admins always see full results.
 - Storage: DynamoDB `voting-api`. Polls (`POLL#<id>`, groups/options embedded), atomic `RESULTS` counters (incremented with retries), `IDEMPOTENCY#<key>` records (TTL 24 h).
+- Routes: `spec/api.yaml` in the `voting-api` repo.
 
 ---
 
@@ -99,9 +92,9 @@ Polls (e.g. match MVP votes) with idempotent, captcha-protected ballot casting.
 
 | Lib | What it offers | Used by |
 |---|---|---|
-| `auth` | `google.Validator` (Google ID token → `AuthToken`); `token.TokenService` (HS256 ICAA JWTs: access 1 h / refresh 30 d, `kid` key rotation); `RefreshTokenStore` interface | all services (auth cookies), `login` (issue) |
-| `middleware` | `AccessLogging`, `OTELHandler`/`FlushTraces`, `CorsMiddleware`/`DefaultCorsConfig`, `BaseNamePrefix`, `HostSwaggerUI`, auth/logger/IP context helpers | all services |
-| `captcha` | `Validator` interface + `cfturnstile` implementation (siteverify with idempotency key) | event-registration, mailing-list, voting |
-| `email` | `Sender` (SES/Gmail/MailerSend) + `SubscriberManager` (MailerLite, `FindOrCreateGroup`) + categorized errors | event-registration, mailing-list |
-| `payments` | `CheckoutManager` (`CreateCheckout`, `ConfirmCheckout` webhook) + `PaymentQuerier` (list/search charges) — Stripe impl | donation-api, event-registration |
-| `telemetry` | `Init` (OTLP gRPC, New Relic `api-key`), `InstrumentedHTTPClient`, `InstrumentAWSConfig`, `RunWithSpan` | all services |
+| `auth` | Google ID-token validation; ICAA JWT (access/refresh) signing & validation with `kid` key rotation; refresh-token store interface | all services (validate), `login` (issue) |
+| `middleware` | Reusable HTTP middleware (logging, CORS, OTel, Swagger UI hosting, auth-context plumbing) | all services |
+| `captcha` | CAPTCHA validator interface + Cloudflare Turnstile implementation (siteverify with idempotency key) | event-registration, mailing-list, voting |
+| `email` | Email sending (SES/Gmail/MailerSend) + MailerLite subscriber/group management, with categorized errors | event-registration, mailing-list |
+| `payments` | Stripe checkout-session creation, webhook verification, and charge listing/search | donation-api, event-registration |
+| `telemetry` | OpenTelemetry init (OTLP → New Relic) + instrumented HTTP/AWS clients | all services |

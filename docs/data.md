@@ -49,7 +49,7 @@ Most state lives in DynamoDB, one table per service, all in `us-east-1`. A coupl
 - Public-read bucket with CORS for `https://icaa.world` and `https://*.icaa.world`.
 - Object keys are flat: `<uuid>.<ext>` (no folders); the folder hierarchy lives only in DynamoDB.
 - Writes are browser-direct via **presigned POST** (from `POST /assets/v1/upload-url`); the API confirms via `HeadObject`.
-- CDN base URL `https://assets.icaa.world` is exposed to the frontend via `ASSETS_CDN_BASE_URL`, and all `<img>`/PDF URLs on the site point here.
+- CDN base URL for the API is `ASSETS_CDN_BASE_URL` (server-side env var in `assets-api`, default `https://assets.icaa.world`). The API returns full CDN URLs on asset objects, and all `<img>`/PDF URLs on the site point there.
 
 ## Stripe as a store
 

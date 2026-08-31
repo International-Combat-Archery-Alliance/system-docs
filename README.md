@@ -2,7 +2,7 @@
 
 System design and architecture documentation for the International Combat Archery Alliance platform — the tech behind [icaa.world](https://icaa.world).
 
-This repo is a reference for the overall platform: services, their routes, data, auth, and infrastructure. Use it as a starting point when building or changing things.
+This repo is a reference for the overall platform: services and what each owns, data, auth, and infrastructure. Use it as a starting point when building or changing things. Route-level details live in each service's OpenAPI spec, not here.
 
 ## Repo inventory
 
@@ -11,7 +11,7 @@ The org has 15 repos. All are Go-based unless noted.
 ### Frontend
 | Repo | Role |
 |---|---|
-| `icaa.world` | The website — a React 19 + Vite SPA deployed to Cloudflare Pages. The primary consumer of every API. |
+| `icaa.world` | The website — a React + Vite SPA deployed to Cloudflare Pages. The primary consumer of every API. |
 
 ### Backend services (AWS Lambda + API Gateway, via AWS SAM)
 | Repo | Base path on `api.icaa.world` | Role |
@@ -30,8 +30,8 @@ The org has 15 repos. All are Go-based unless noted.
 | `auth` | Google ID-token validation + ICAA JWT (access/refresh) signing & validation, roles |
 | `middleware` | Reusable HTTP middleware (logging, CORS, OTel, auth-context plumbing, Swagger UI, base path) |
 | `captcha` | CAPTCHA validator interface + Cloudflare Turnstile implementation |
-| `email` | Email `Sender` / `SubscriberManager` interfaces; SES, Gmail, MailerSend, MailerLite |
-| `payments` | Payment `CheckoutManager`/`PaymentQuerier` interfaces; Stripe implementation |
+| `email` | Email sending + subscriber/group management (SES, Gmail, MailerSend, MailerLite) |
+| `payments` | Stripe checkout + payment lookup interfaces |
 | `telemetry` | OpenTelemetry init (OTLP to New Relic), instrumented HTTP/AWS clients |
 
 ### Infrastructure
@@ -47,7 +47,7 @@ The org has 15 repos. All are Go-based unless noted.
 | API gateway | `https://api.icaa.world/<service-prefix>/...` |
 | Asset CDN | `https://assets.icaa.world/<uuid>.<ext>` |
 | AWS account / region | `197461532156` / `us-east-1` |
-| Tracing | OpenTelemetry → New Relic (OTLP) |
+| Tracing | OpenTelemetry → New Relic (OTLP, account `7969260`) |
 | DNS / CDN / Turnstile | Cloudflare |
 
 ## Docs
@@ -55,8 +55,8 @@ The org has 15 repos. All are Go-based unless noted.
 | Doc | Covers |
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | System overview + diagrams |
-| [docs/services.md](docs/services.md) | Each service: routes, storage, integrations |
-| [docs/frontend.md](docs/frontend.md) | The `icaa.world` SPA: build, routes, API wiring, env vars |
+| [docs/services.md](docs/services.md) | Each service: what it owns, storage, integrations (routes live in each spec) |
+| [docs/frontend.md](docs/frontend.md) | The `icaa.world` SPA: build, pages, API wiring, env vars |
 | [docs/auth.md](docs/auth.md) | Google OAuth, JWT cookies, admin roles, token refresh |
 | [docs/data.md](docs/data.md) | DynamoDB single-table designs, S3, Stripe-as-store |
 | [docs/infrastructure.md](docs/infrastructure.md) | AWS/Cloudflare deployment, secrets, CI/CD |
@@ -65,10 +65,8 @@ The org has 15 repos. All are Go-based unless noted.
 
 Everything can run on one machine:
 
-1. `icaa.world` has a `docker-compose.yml` (DynamoDB, Jaeger, MinIO) and `make local` targets that spin up all backend services via SAM on a shared Docker network.
-2. Backend services run the Lambda binary locally on ports `3000`–`3006`:
-   `events=3000, login=3001, assets=3002, donations=3003, articles=3004, mailing-list=3005, voting=3006`.
-3. Frontend dev server runs on `:5173` (`bun run dev`); `.env.development` points each API client at the local SAM ports.
-4. Local DynamoDB tables are bootstrapped with the production schemas; local auth uses the `local-development-signing-key…` JWT key and treats every user as admin.
-5. TypeScript API clients in the frontend are regenerated from live specs with `bun run codegen` (needs a running/prod `api.icaa.world`).
-6. The `infra` repo uses Cloudflare + AWS providers and will need credentials + a state bucket (`icaa-terraform-state`) before `terraform apply`.
+1. `icaa.world` provides a `docker-compose.yml` (DynamoDB, Jaeger, MinIO on the `icaa-shared` network) and `bun run-all-backend`, which drives each backend repo's `make local` target to bring up all services via SAM.
+2. Backend services run on `localhost:3000`–`3006`; the SPA dev server runs on `:5173` (`bun run dev`). The port → service mapping lives in `.env.development`.
+3. Local DynamoDB tables are bootstrapped with the production schemas; local auth uses the `local-development-signing-key…` JWT key and treats every user as admin.
+4. TypeScript API clients in the frontend are regenerated from live specs with `bun run codegen` (needs a running/prod `api.icaa.world`).
+5. The `infra` repo needs AWS + Cloudflare credentials and the shared Terraform state bucket before `terraform apply` (see [docs/infrastructure.md](docs/infrastructure.md)).

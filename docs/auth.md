@@ -10,7 +10,7 @@ Authentication is split between the `login` service (who *issues* sessions) and 
   - `ICAA_ACCESS_TOKEN` — HS256 JWT, TTL 1 h, `iss=icaa.world`, `aud=icaa-api`, `kid` header, claims `{email, picture, roles[], token_type=access}`.
   - `ICAA_REFRESH_TOKEN` — separate JWT with a random 32-byte `tokenID` in `sub`, TTL 30 d. Rotated on every refresh (old one is deleted from DynamoDB).
 - Cookies are `HttpOnly`, `SameSite=Strict`, `Secure` in prod, `Domain=icaa.world` in prod (so `api.icaa.world` APIs and `icaa.world` pages share the session). `Path=/`.
-- **Roles**: single role `ADMIN`. Assignment = membership in the configured admin email list (SSM `/adminEmails`, or hardcoded local). The `auth/google` validator treats anything inside the `icaa.world` Google Workspace (`hd=icaa.world`) as admin too.
+- **Roles**: single role `ADMIN`. Assignment = membership in the configured admin email list (SSM `/adminEmails`, or everyone in local). The `auth/google` validator exposes an `IsAdmin()` based on `hd=icaa.world` (Google Workspace membership), but `login` currently derives roles only from the admin email list — the `hd` path isn't wired into the issued tokens.
 
 ## Flow
 
@@ -44,12 +44,12 @@ sequenceDiagram
 
 ## How services validate
 
-Every service implements the same OpenAPI validation middleware (pattern comes from `login/api/openapivalidate.go`):
+Every service implements the same OpenAPI validation middleware (pattern introduced by `login`):
 
 1. Read `ICAA_ACCESS_TOKEN` cookie (or `Authorization: Bearer`).
-2. Validate with `token.TokenService.ValidateAccessToken` — HMAC check, key lookup by `kid` against SSM `/jwtSigningKeys` (JSON `{currentKey, keys:{<kid>: base64}}`), enforce `aud=icaa-api`, `token_type=access`.
-3. Wrap claims as `token.ICAAAuthToken`, stash in request context via `middleware.CtxWithJWT`.
-4. Handlers read it back with `middleware.GetJWTFromCtx`; the OpenAPI `admin` scope requires `roles` to contain `ADMIN`.
+2. Validate the access token — HMAC check, key lookup by `kid` against SSM `/jwtSigningKeys` (JSON `{currentKey, keys:{<kid>: base64}}`), enforce `aud=icaa-api`, `token_type=access`.
+3. Wrap the claims as an ICAA auth token and stash it in the request context.
+4. Handlers read it back from context; the OpenAPI `admin` scope requires `roles` to contain `ADMIN`.
 
 `login` is the only holder of signing keys *and* the session store. Every other service only validates with the same keys — that's the trust boundary.
 
