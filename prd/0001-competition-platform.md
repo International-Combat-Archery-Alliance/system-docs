@@ -3,23 +3,23 @@
 > **Status:** Draft · **Date:** 2026-09-01 · **Owner:** Andrew Mellen
 > **Scope:** Tournament management (teams, events, playoffs, circuits) · Player profiles ·
 > Accounts & auth · The website · Platform foundation
->
-> This is the first PRD written for the ICAA platform, and the **canonical product spec** for the
-> ICAA Competition Platform — the *what* and *why* we are building. It is the reference we check RFCs
-> against when we revise or implement them, and the single document a non-engineer (league board,
-> organizers) can read to understand scope, priorities, and decisions.
->
-> **Context — this is new functionality on an existing, live platform.** The platform already runs in
-> production (accounts & logins, news articles, donations, paid event registration, voting, the
-> website). This PRD does not re-build or re-platform that; it defines a coherent program of **new
-> features layered on top of the existing system**. Nothing here assumes a greenfield — every change
-> must preserve what already works, above all the paid registration flow.
->
-> **Reading guide:** product goals, personas, scope, sequencing, and decisions live here, in user
-> terms. *How* each feature is designed (data, interfaces, migration) lives in the linked **RFCs**;
-> cross-cutting technical decisions live in the linked **ADRs**; and the not-yet-decided league-rule
-> choices live in **OPEN-DECISIONS.md**. If an RFC and this PRD ever disagree on *what* we are
-> building, this document wins — fix the RFC.
+
+This is the first PRD written for the ICAA platform, and the **canonical product spec** for the
+ICAA Competition Platform — the *what* and *why* we are building. It is the reference we check RFCs
+against when we revise or implement them, and the single document a non-engineer (league board,
+organizers) can read to understand scope, priorities, and decisions.
+
+**Context — this is new functionality on an existing, live platform.** The platform already runs in
+production (accounts & logins, news articles, donations, paid event registration, voting, the
+website). This PRD does not re-build or re-platform that; it defines a coherent program of **new
+features layered on top of the existing system**. Nothing here assumes a greenfield — every change
+must preserve what already works, above all the paid registration flow.
+
+**Reading guide:** product goals, personas, scope, sequencing, and decisions live here, in user
+terms. *How* each feature is designed (data, interfaces, migration) lives in the linked **RFCs**;
+cross-cutting technical decisions live in the linked **ADRs**; and the not-yet-decided league-rule
+choices live in **OPEN-DECISIONS.md**. If an RFC and this PRD ever disagree on *what* we are
+building, this document wins — fix the RFC.
 
 ---
 
