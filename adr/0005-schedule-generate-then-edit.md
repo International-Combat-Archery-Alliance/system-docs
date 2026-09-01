@@ -11,9 +11,11 @@ platform needs a real workflow for creating games and reporting results.
 
 ## Decision
 
-- Admins **generate** schedules from an event's **CONFIRMED (paid) participation** (RFC-0002 §4)
-  using pure, deterministic generators (round robin, swiss, playoff brackets), then **edit**
-  results/status as games complete.
+- **An event has no schedule until an admin generates one.** Generating from the event's
+  **CONFIRMED (paid) participation** (RFC-0002 §4) with pure, deterministic generators (round robin,
+  swiss, playoff brackets) is what creates an event's games; before that step the public schedule is
+  empty — a real state, not a placeholder.
+- Admins then **edit** results/status as games complete.
 - Standings are **derived deterministically from games at read time** (an event has at most a few
   dozen games — trivial to compute), not stored.
 - Supported v1 formats: **round robin, swiss, single-elimination playoffs, double-elimination

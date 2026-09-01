@@ -18,10 +18,17 @@ first-class, API-backed data.
 ### Goals
 - `Game` entity per event: phase (qualifying/playoff), round, sides, scores, status.
 - **Generate-then-edit** — round robin and swiss generators (pure, deterministic, unit-tested).
+- **No schedule until generated** — an event has no games until an admin generates them from the
+  event's confirmed teams; the pre-generation state is an empty schedule (a real state, not a
+  placeholder).
 - Standings **derived deterministically from games** at read time; no stored standings row.
 - Event lifecycle: `OPENED → IN_PROGRESS → FINALIZED`; finalize locks the event, then fans out
   player projections + circuit points through a single idempotent recompute path (ADR-0003).
 - Replace the hardcoded event-page data with API-backed cards.
+- **Live schedule view during the event:** the Schedule card doubles as the tournament's "upcoming
+  games" view — it revalidates the public games endpoint while the event is `IN_PROGRESS`, so
+  upcoming games and finishes update as admin-entered results land (standings refresh the same way,
+  since they're derived at read time).
 
 ### Non-goals (defer)
 - Live score-entry UIs with timers; per-game player lineups; rescheduling tools beyond score edits.
@@ -59,6 +66,12 @@ Game:                PK = "GAME#<eventId>"          SK = "GAME#<phase>#<round%02
   `eligibilityRule` is designed or stored.
 
 ## 4. Schedule generation (generate-then-edit)
+
+**An event has no schedule until an admin generates one.** Games are created only by `generate` (and
+playoff generation, RFC-0003); until then `GET /events/v1/{eventId}/games` returns an empty list and
+the event page shows a "no schedule yet" state (never fabricated content — see §8). The generator's
+output is the **starting draft**; admins tweak it as the event runs (score/status edits, §5) rather
+than building schedules by hand.
 
 `POST /events/v1/{eventId}/games/generate` — body `{format, opts}`. Admin only. Registration must be
 closed (past `registrationCloseTime`) and the event moved to `IN_PROGRESS` to generate. **Input is
@@ -164,7 +177,7 @@ order** (RFC-0003: champion 1st, runner-up 2nd, etc.). The qualifying sort is a 
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/events/v1/{eventId}/games` | public | Schedule (QUALIFYING before PLAYOFF; joined with team names) |
+| GET | `/events/v1/{eventId}/games` | public | Schedule (QUALIFYING before PLAYOFF; joined with team names); empty list until an admin generates the schedule (§4) |
 | POST | `/events/v1/{eventId}/games/generate` | admin | Generate round robin / swiss (§4) |
 | PUT | `/events/v1/{eventId}/games/{gameId}` | admin | Enter score/status (§5); blocked when event FINALIZED |
 | GET | `/events/v1/{eventId}/standings` | public | Derived standings (§5) |
@@ -179,8 +192,14 @@ order** (RFC-0003: champion 1st, runner-up 2nd, etc.). The qualifying sort is a 
 
 ## 8. UI (icaa.world)
 
-- Event page **Standings** + **Schedule** cards render from the API; hardcoded arrays removed once
-  Boston data is backfilled (§9).
+- Event page **Standings** + **Schedule** cards render from the API — before a schedule is generated
+  the cards show an empty "no schedule yet" state, never fabricated content; hardcoded arrays removed
+  once Boston data is backfilled (§9).
+- **Live "upcoming games" view:** the Schedule card doubles as a live view during the event — it
+  polls/revalidates `GET /events/v1/{eventId}/games` (and standings) on a short interval while the
+  event is `IN_PROGRESS`, so visitors see upcoming games and finishes update as results are entered.
+  No websockets/push in v1 — plain client-side revalidation of the public endpoints (the data models
+  already make this a read-time projection).
 - Admin: generator form (format/options), score-entry rows, finalize/recompute/
   unfinalize with confirmations.
 
@@ -205,6 +224,7 @@ Ordering matters:
 ## 10. Edge cases
 
 - Regenerate scheduling mid-event (blocked once a result exists, per §4); odd fields (virtual byes);
+- Event with no generated schedule yet (empty games list; page shows the "no schedule yet" empty state);
 - Team drops out / no-shows (DNS exclusion from placement + points); forfeits incl. double;
 - Finalize with an unresolved bracket (must be resolved via results/forfeits — no `qualifyingOnly` mode); interrupted fan-out
   (completion marker + recompute); score correction post-finalize (unfinalize → edit → finalize);
@@ -223,6 +243,7 @@ Ordering matters:
 - [ ] `TEAM_NAME` GSI in terraform + docker-compose + db_test; GSI-attribute rule on new items
 - [ ] Boston backfill workstream (incl. playoffs) + verification + finalize fan-out
 - [ ] Event page cards wired to API; admin generator/score/finalize UI
+- [ ] Live "upcoming games" schedule view (poll/revalidate games + standings while `IN_PROGRESS`)
 - [ ] Update `system-docs/docs/data.md` + `services.md`
 
 ## Open decisions
