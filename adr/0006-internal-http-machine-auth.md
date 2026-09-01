@@ -89,19 +89,44 @@ The callee's CI spec-diffs (`oasdiff`) before deploy.
 
 ### m2m endpoint hardening
 
-- `POST /login/v1/m2m-tokens` is internet-facing and NOT Google-gated, so it needs real
-  rate-limiting — **API Gateway HTTP API v2 has no per-route throttling/usage plans**, so the
-  control must be:
-  - an **AWS WAF rate rule** scoped to the `/login/*/m2m-tokens` path (preferred; account-level
-    includes `api.icaa.world`), **and/or**
-  - a **DynamoDB-backed per-`clientId` limiter** inside login (TLL counters; Lambda in-memory
-    counters don't survive instance churn), with a **short-term credential lockout** after N failed
-    attempts per `clientId`.
+`POST /login/v1/m2m-tokens` is internet-facing and NOT Google-gated, so it needs real rate-limiting.
+**API Gateway HTTP API v2 has no per-route throttling/usage plans** (that is a REST-API v1 feature),
+so the control is two layers:
+
+**Layer 1 — AWS WAF rate rule (edge, before Lambda).** `AWS::WAFv2::WebACL` +
+`AWS::WAFv2::WebACLAssociation` on the login stage ARN. A rate-based rule (e.g. 20 req / 5 min per
+source IP, `AggregateKeyType: IP`) scoped to the path with an `AndStatement` + `ByteMatchStatement`
+matching the incoming URI path `/login/v1/m2m-tokens`. Stops floods/DoS before the Lambda ever runs;
+keys on IP only (cheap first line, botnets aside).
+
+**Layer 2 — DynamoDB per-`clientId` fixed-window counter + lockout (in `login`).** Targets the real
+threat: a *valid* clientId being hammered, bcrypt CPU burn, and brute-force guesses. New item family
+in the existing `login-api` table:
+
+```
+PK = "RATE#<clientId>"    SK = "RATE#<clientId>"
+attributes: windowCount, failCount, lockedUntil?, ttl   (ttl = end of the 60s window)
+```
+
+- **Init-or-claim** the window: `UpdateItem` with `AttributeNotExists` on create + `ttl`; DynamoDB
+  TTL cleans stale windows for free.
+- **Count atomically:** `ADD windowCount 1` (safe across concurrent Lambda instances);
+  `windowCount > limit` (e.g. 30/min) → `429`.
+- **Lockout:** on a failed `invalid_client`, `ADD failCount 1`; at N failures (e.g. 5) →
+  `SET lockedUntil = now + 15 min`; any request while locked → `429`; success resets `failCount`.
+- **Runs BEFORE bcrypt**, so failed attempts never burn Lambda CPU.
+- Fixed-window has a soft boundary-burst edge (fine for DoS/brute-force protection); upgrade to a
+  single-item token bucket (`SET tokens = LEAST(threshold, tokens + FLOOR((now-updatedAt)/interval))`
+  in one `UpdateItem`) if tight-burst ever matters.
+- Optional micro-filter: a per-instance in-memory recent-failures map (instances churn, so it is a
+  fast-path filter, never the mechanism of record).
+
 - Fix a documented **bcrypt cost** (10–12) so the CPU budget per attempt is known, and **equalize
   the unknown-`clientId` path** with a dummy bcrypt compare so clientId existence is not a timing
   oracle.
-- **CloudWatch alarm on `invalid_client` 401 spikes** (leak/brute-force signal) and on caller-side
-  roster-write M2M failures — wired to an actual countermeasure, not just an alert.
+- **CloudWatch alarm on `invalid_client` 401 spikes / lockout events** (leak/brute-force signal) and
+  on caller-side roster-write M2M failures — wired to the Layer-2 countermeasure as the response, not
+  just an alert.
 - **Rotation runbook couples both stores:** update the bcrypt `secretRounds[]` + the SSM value
   together, then **roll the caller** (`sam deploy` or recycle) — the caller reads SSM at startup, so
   a rotated secret silently breaks roster writes until its instances recycle. Keep the previous round
@@ -147,7 +172,7 @@ The callee's CI spec-diffs (`oasdiff`) before deploy.
 1. `login`: declare `POST /login/v1/m2m-tokens` and `GET /login/.well-known/jwks.json` in its spec
    (`security: []`); provision `/m2m/<clientId>/secret` (SSM, caller role) + bcrypt `CLIENT#<id>`
    record (login table); `/machineJwtSigningKeys` (login-only) + `/jwtPublicKeys` (all services);
-   add throttling + alarms.
+   add the WAF rate rule + DDB `RATE#` limiter/lockout + alarms (§m2m endpoint hardening).
 2. **IAM:** grant caller role `ssm:GetParameter` on `/m2m/<clientId>/secret`; login role on
    `/machineJwtSigningKeys` **and `ssm:PutParameter` on `/machineJwtSigningKeys`,
    `/userJwtSigningKeys`, and `/jwtPublicKeys`** (rotation cannot run without PutParameter).
