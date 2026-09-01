@@ -44,15 +44,20 @@ towards — **added onto the existing live platform**, not replacing it.
 | **League / tournament organizers (admins)** | Results are hand-entered or hardcoded; no teams-of-record; no points system; profiles are static files | Admin-managed teams & rosters, schedule + score entry, playoffs, circuit points, player directory |
 | **Team captains** | A "team" resets every event; no history or records to point to | A persistent team with roster, events played, records (registration still admin-mediated in v1) |
 | **Players / members** | No page that shows their tournament history | A player profile with bio + verified event history & records |
-| **Spectators / visitors** | Events with no schedule, standings, or brackets; no way to explore teams/players | Public, always-current schedules, standings, brackets, directories, and player pages |
+| **Spectators / visitors** | Events with no schedule, standings, or brackets; no way to explore teams/players | Public schedules, standings, brackets, directories, and player pages — shown live once they're published |
 
 ## 3. Goals & non-goals
 
 ### Goals (product-level)
 - **Persistent competition identity:** a team and a player are the same entity across events, so
   history and records accumulate instead of being re-created each time.
-- **Every event is live:** schedule, standings, and (where applicable) playoff brackets render from
-  current data — no event shows "coming soon", no hand-entered result data.
+- **Every event renders real data once it exists:** after an event's teams are confirmed, an admin
+  generates its schedule and the event page renders a live schedule, standings, and (where applicable)
+  playoff brackets from that data — no hand-entered result data and no stale "coming soon" content.
+  Before that step, an event simply has **no schedule yet** (a real empty state, not a placeholder).
+- **Live during the tournament:** while an event is in progress, the event page's schedule view shows
+  the current slate — upcoming games and, as results are entered, which games have finished — and
+  updates as admins record results, so visitors watch the tournament unfold without a rebuild.
 - **Admin can run the full lifecycle** of an event and a season: enter teams → generate schedules →
   record scores → run playoffs → finalize → award circuit points — without manual spreadsheet work.
 - **Player profiles are living pages:** bio + derived, trustworthy history (never re-keyed by an
@@ -107,10 +112,14 @@ real teams at the end, once team data is trustworthy. **User outcome:** a team i
 with history, not a one-off registration.
 
 ### 4.3 Games, Schedules & Standings — [RFC-0002](../rfcs/0002-games-schedules-standings.md)
-Events get a real lifecycle, and schedules are **generated then edited**: round-robin and swiss
-schedules, score/results entry, standings derived live from games, and a finalize step that locks the
-event and publishes results. **User outcome:** any event page shows a real, current schedule +
-standings.
+Events get a real lifecycle, and schedules are **generated then edited**: an admin generates a
+schedule once the event's teams are set (confirmed participation), then tweaks it as the event runs —
+round-robin and swiss schedules, score/results entry, standings derived live from games, and a
+finalize step that locks the event and publishes results. Until that generation happens, an event
+has **no schedule** — a real empty state, not hardcoded content. **User outcome:** once teams are set
+and an admin generates the schedule, the event page shows a real, current schedule + standings;
+before that, a clear "no schedule yet" state. During the tournament, the schedule is the event's live
+view — upcoming games and finishes update as results are entered.
 
 ### 4.4 Playoffs — [RFC-0003](../rfcs/0003-playoffs.md)
 Single-elimination (first) and double-elimination (later) brackets generated from final qualifying
@@ -134,7 +143,7 @@ each RFC.
 | **0 — Foundation** | The accounts & security foundation ([ADR-0006/7/8](../adr/README.md)) | The groundwork that lets the platform's parts depend on one another safely | — |
 | **1 — Player identity** | Player profiles: bio + directory ([RFC-0005](../rfcs/0005-player-profiles.md)) | Players get real identities the rest of the platform can rely on | 0 |
 | **2 — Team identity** | Teams & rosters ([RFC-0001](../rfcs/0001-teams-and-rosters.md)) | Teams get persistent identity and histories, added alongside what exists today — signing up for an event doesn't change yet | 1 |
-| **3 — Events go live** | Games, schedules & standings ([RFC-0002](../rfcs/0002-games-schedules-standings.md)) | Every event shows a real schedule/standings and can publish results; recreate the history of the two past events | 2 |
+| **3 — Events go live** | Games, schedules & standings ([RFC-0002](../rfcs/0002-games-schedules-standings.md)) | Events that reach the scheduling step show a live, generated-then-edited schedule/standings and can publish results (events before that step show no schedule); recreate the history of the two past events | 2 |
 | **4 — Playoffs** | Playoffs ([RFC-0003](../rfcs/0003-playoffs.md)) | Events can crown a champion with a clear final order | 3 |
 | **5 — Circuits** | Circuits ([RFC-0004](../rfcs/0004-circuits.md)) | Teams earn points across a season and qualify for a championship; points build on the playoff order from Phase 4 | 3, 4 |
 | **6 — Complete experience** | Sign-up uses real teams; profiles show live history ([RFC-0001](../rfcs/0001-teams-and-rosters.md), [RFC-0005](../rfcs/0005-player-profiles.md)); double-elimination playoffs ([RFC-0003](../rfcs/0003-playoffs.md)) | Now that team identity is trustworthy, signing up can use it; profiles get their history tab | 3, 4, 5 |
@@ -172,8 +181,13 @@ in its owning RFC's Open decisions ([index](../rfcs/OPEN-DECISIONS.md)).
 
 "Done" for this program is not just "the capabilities exist" — it's measurable product outcomes:
 
-- **No event shows "coming soon":** every event page shows a live schedule and standings; the two
-  hand-built event pages become the real record (Phase 3) and history reads from live data.
+- **No stale "coming soon":** every event that has reached the scheduling step shows a live,
+  generated-then-edited schedule and standings rendered from current data; events that haven't yet
+  show a real "no schedule yet" empty state, never fabricated content. The two hand-built event pages
+  become the real record (Phase 3) and history reads from live data.
+- **Live during a tournament:** while an event is in progress, its schedule view shows the current
+  slate — upcoming games and finishes — and reflects admin-entered results as they land, without a
+  page rebuild.
 - **Teams are persistent:** a team's page shows its history across its actual events, and (in the final
   phase) signing up for an event lets you pick your real team.
 - **Player pages are real:** all 48 static player profiles become live pages whose history is drawn
