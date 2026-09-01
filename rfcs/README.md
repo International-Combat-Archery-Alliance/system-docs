@@ -27,7 +27,9 @@ that is how these docs stay truthful.
 ## Open team decisions
 
 League-rule and product choices the ICAA team must confirm before implementation (defaults are
-recorded so work isn't blocked) live in **[OPEN-DECISIONS.md](OPEN-DECISIONS.md)**.
+recorded so work isn't blocked). **Each decision lives in its owning RFC's `## Open decisions`
+section**; **[OPEN-DECISIONS.md](OPEN-DECISIONS.md)** is the index, plus a couple of cross-cutting
+notes (D27/D28).
 
 ## RFC index
 

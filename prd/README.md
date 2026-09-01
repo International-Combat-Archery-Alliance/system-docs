@@ -16,7 +16,7 @@ know it worked.* This README is the convention guide for writing one.
 | **PRD** (`prd/NNNN-*.md`) | *What & why* — outcomes, personas, scope, priorities/sequencing, product decisions, success criteria | Everyone |
 | RFC (`rfcs/NNNN-*.md`) | *How* — design, data model, APIs, migration | Engineers |
 | ADR (`adr/NNNN-*.md`) | *Why* behind a technical approach | Engineers |
-| [OPEN-DECISIONS](../rfcs/OPEN-DECISIONS.md) | Live league-rule/product decision log | Team |
+| [OPEN-DECISIONS](../rfcs/OPEN-DECISIONS.md) | Index of per-RFC open decisions + cross-cutting notes | Team |
 | [docs/](../docs) | How the system *is* today (current state) | Engineers |
 
 The rule of thumb: **if the PRD and an RFC disagree on *what* we're building, the PRD wins** — fix
@@ -34,7 +34,8 @@ the RFC.
 4. **Be opinionated on what ships and what waits.** Include an explicit non-goals / out-of-scope
    list and a product-framed roadmap, not just a list of features.
 5. **Own the decisions, not the decision log.** Summarize the decisions that block or shape the
-   work in user terms and link to `OPEN-DECISIONS.md` for the full log.
+   work in user terms and link to the owning RFC's `## Open decisions` (indexed in
+   `OPEN-DECISIONS.md`).
 6. **Define product-level "done."** Success criteria are measurable outcomes (a person can do X,
    Y is no longer manual), not "the endpoint exists."
 7. **Keep it tight.** The PRD is the entry point; a reader should finish it before deciding to dive
@@ -56,7 +57,7 @@ Every PRD should contain these sections, in order:
 ## 3. Goals & non-goals         (non-goals = deferred *within* this program)
 ## 4. Feature scope             (per feature: product summary + link to RFC/ADR)
 ## 5. How we ship it            (product roadmap / sequencing, incl. hard rules)
-## 6. Product decisions to confirm   (user-terms summary + link to OPEN-DECISIONS)
+## 6. Product decisions   (user-terms summary + link to the owning RFC's Open decisions)
 ## 7. How we'll know it's working    (success criteria)
 ## 8. Future program candidates (revisit triggers; non-goals from §3 stay in §3)
 ## 9. References

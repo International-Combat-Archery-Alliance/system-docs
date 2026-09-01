@@ -95,11 +95,11 @@ event-registration transaction (§6), not a post-hoc write.
 - **A team has at most one participation row per event** — enforced by `AttributeNotExists` on the
   participation key (a second entry → 409; explicit re-activation path).
 - **Registration close stays time-based** — the existing `registrationCloseTime` is the sole trigger;
-  moving the event to `IN_PROGRESS` does **not** auto-close it (decision D8, `OPEN-DECISIONS.md`).
+  moving the event to `IN_PROGRESS` does **not** auto-close it (decision D8, §Open decisions).
   Late teams use the admin `late-team` flow (RFC-0002 §7) which regenerates unplayed games preserving
   results.
 - **Archived teams** cannot enter new events; history and projections remain.
-- Players may be on **≥ 1 team at once** in v1 (open rule — `OPEN-DECISIONS.md`).
+- Players may be on **≥ 1 team at once** in v1 (open rule — §Open decisions).
 
 ## 6. Registration flow (teams) — the payment lifecycle
 
@@ -192,3 +192,16 @@ regression tests), then the SPA form swap when teams are trustworthy.
 - [ ] Migration tooling + dry-run/idempotency + email-pass prerequisite
 - [ ] Frontend `/teams` pages; registration form swap (flag-gated stage C)
 - [ ] Update `system-docs/docs/data.md` + `services.md`
+
+## Open decisions
+
+League-rule/product choices specific to teams & rosters. Keep global `D#`s; the
+[index](../OPEN-DECISIONS.md) maps every decision to its owning RFC.
+
+| # | Decision | Recommended default | Status |
+|---|---|---|---|
+| D8 | **Late registration** — when does event sign-up close? **Resolved:** keep the existing time-based `registrationCloseTime` — no change to the live paid flow (moving an event to IN_PROGRESS does not auto-close). Late teams still enter via the admin late-team flow. | Keep time-based close (no change) | [x] (2026-09-01) |
+| D22 | **Player on multiple teams** — allowed in v1 (projection key already supports it via `RESULT#<eventId>#<teamId>`). | Allowed; review when self-service lands | [ ] |
+| D23 | **Team name uniqueness** — enforced via name reservation + 409. Confirm (vs best-effort + merge). | Enforce via reservation | [ ] |
+| D24 | **Post-launch team merges** — two teams turn out to be the same org: ship a merge operation or explicitly defer (keep survivor, re-point future events)? | Defer mechanics; future | [ ] |
+| D26 | **Free agents** — individual (ByIndividual) registrations coexist but earn no circuit points in v1. Confirm. | Unscored in v1 | [ ] |

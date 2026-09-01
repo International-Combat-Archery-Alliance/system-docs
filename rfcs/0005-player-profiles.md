@@ -167,7 +167,7 @@ Roster migrations for existing team registrations are handled in RFC-0001 §Migr
 5. Roster flows (RFC-0001) use the player directory search to pick/create players.
 6. Admin profile-photo upload (assets presign → confirm → set `profilePicture`) on the edit route.
 
-## 9. Edge cases / open decisions
+## 9. Edge cases
 
 - **Email uniqueness** — legacy data has missing emails; enforce uniqueness only when present, and
   hold off on hard guarantees until self-service lands. `email` is **not exposed on the public API**
@@ -190,3 +190,12 @@ Roster migrations for existing team registrations are handled in RFC-0001 §Migr
 - [ ] Codegen + query client + `/player-profiles/:playerId` page; delete static JSON
 - [ ] Email backfill pass against registration data
 - [ ] Admin profile-photo upload via assets-api (presign + confirm) + SPA edit UI
+
+## Open decisions
+
+League-rule/product choices specific to player profiles. Keep global `D#`s; the
+[index](../OPEN-DECISIONS.md) maps every decision to its owning RFC.
+
+| # | Decision | Recommended default | Status |
+|---|---|---|---|
+| D25 | **Public player pages** — public read immediately, or admin-only until data is trustworthy? | Admin-only initially, public after backfill verified | [ ] |

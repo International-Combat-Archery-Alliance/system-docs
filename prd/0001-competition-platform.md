@@ -17,8 +17,9 @@ must preserve what already works, above all the paid registration flow.
 
 **Reading guide:** product goals, personas, scope, sequencing, and decisions live here, in user
 terms. *How* each feature is designed (data, interfaces, migration) lives in the linked **RFCs**;
-cross-cutting technical decisions live in the linked **ADRs**; and the not-yet-decided league-rule
-choices live in **OPEN-DECISIONS.md**. If an RFC and this PRD ever disagree on *what* we are
+cross-cutting technical decisions live in the linked **ADRs**; and the league-rule decisions live
+in **each RFC's Open decisions** (indexed in **OPEN-DECISIONS.md**), where they're decided alongside
+the feature they constrain. If an RFC and this PRD ever disagree on *what* we are
 building, this document wins — fix the RFC.
 
 ---
@@ -151,8 +152,9 @@ each RFC.
 
 ## 6. Product decisions (what was confirmed)
 
-The league-rule/product choices that were open at design time, and how they were resolved. The full
-log (28 items) is in [OPEN-DECISIONS.md](../rfcs/OPEN-DECISIONS.md); the items below were decided at
+The league-rule/product choices that were open at design time, and how they were resolved. Each
+decision lives in its owning RFC's `## Open decisions` (indexed in
+[OPEN-DECISIONS.md](../rfcs/OPEN-DECISIONS.md)); the items below were decided at
 design review (2026-09-01). The remaining items are safe to ship with their recorded defaults.
 
 | Decision | The question, in plain language | Resolution |
@@ -163,8 +165,8 @@ design review (2026-09-01). The remaining items are safe to ship with their reco
 | **D19/D20 — Not enough qualifiers / declines** | If fewer teams qualify than slots, or a qualified team declines, what happens? | Admin-managed championship field — the computed list is a suggestion; admins review and set the final field. |
 
 The remaining decisions (draws, byes, points tables, roster-stability rules, players on multiple
-teams, when pages become public, etc.) are safe to ship with their recorded defaults, all listed in
-[OPEN-DECISIONS.md](../rfcs/OPEN-DECISIONS.md).
+teams, when pages become public, etc.) are safe to ship with their recorded defaults; each is open
+in its owning RFC's Open decisions ([index](../rfcs/OPEN-DECISIONS.md)).
 
 ## 7. How we'll know it's working (product-level success criteria)
 
@@ -217,7 +219,7 @@ For what's deferred purely *within* this program, see §3 Non-goals.
 | [RFC-0004](../rfcs/0004-circuits.md) | Circuits design |
 | [RFC-0005](../rfcs/0005-player-profiles.md) | Player Profiles design |
 | [ADR-0001–0008](../adr/README.md) | Cross-cutting technical decisions (why) |
-| [rfcs/OPEN-DECISIONS.md](../rfcs/OPEN-DECISIONS.md) | Live league-rule/product decision log |
+| [rfcs/OPEN-DECISIONS.md](../rfcs/OPEN-DECISIONS.md) | Open-decisions index + cross-cutting notes |
 | [rfcs/README.md](../rfcs/README.md) | RFC lifecycle + staged build order |
 | [docs/](../docs) | How the system *is* today (reference) |
 

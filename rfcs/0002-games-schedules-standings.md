@@ -4,7 +4,7 @@
 > Depends on: RFC-0001 (teams & event participation); RFC-0004 points hook (interface stubbed into
 > the finalize fan-out, §11)
 > Decisions: ADR-0003 (projection/race fixes), ADR-0005 (generate-then-edit)
-> Open rule choices: `OPEN-DECISIONS.md`
+> Open rule choices: §Open decisions (below)
 
 ## 1. Background
 
@@ -51,10 +51,10 @@ Game:                PK = "GAME#<eventId>"          SK = "GAME#<phase>#<round%02
 - `championTeamId?` (set when a playoff bracket resolves).
 - **Registration close stays time-based:** the existing `registrationCloseTime` field (already
   `required` in the spec and enforced in the registration handlers) remains the **sole** trigger —
-  moving an event to `IN_PROGRESS` does **not** auto-close it (decision D8, `OPEN-DECISIONS.md`).
+  moving an event to `IN_PROGRESS` does **not** auto-close it (decision D8, §Open decisions).
   Late teams enter via the admin `late-team` flow (§7). There is exactly one close concept, not a
   second flag to drift.
-- **No forfeit/withdrawal rule machinery** in v1 (decisions D2/D3/D4, `OPEN-DECISIONS.md`): when a
+- **No forfeit/withdrawal rule machinery** in v1 (decisions D2/D3/D4, §Open decisions): when a
   team forfeits or withdraws, the admin records the game status/score directly (§5); no
   `eligibilityRule` is designed or stored.
 
@@ -85,7 +85,7 @@ pay (RFC-0001 §6 lifecycle). Refuses if games exist unless `replace: true` and 
   gets a **virtual bye** (recorded on the game as `status: BYE`, no pf/pa, treated as resolved —
   see §5). Guard: tiny fields (advisable: use ROUND_ROBIN for ≤ 4 teams).
 - BYE allocation: lowest score group, never given twice if avoidable; a bye does **not** count as a
-  win in v1 (no free points) — an open rule, default recorded in `OPEN-DECISIONS.md`.
+  win in v1 (no free points) — an open rule, see §Open decisions.
 
 Both generators are pure + deterministic (fixtures for N=3…16, odd/even, mirror, and swiss edge
 cases) and live in a `schedules/` (or `games/`) domain package.
@@ -115,11 +115,11 @@ and from circuit points — RFC-0004).
 
 - **Forfeits/withdrawals are recorded per game by the admin** (`status: FORFEIT`/`DOUBLE_FORFEIT` +
   scores) — there is **no fixed default-win rule** designed for v1 (decisions D2/D3/D4,
-  `OPEN-DECISIONS.md`). A mid-event withdrawal is handled as it happens; `DOUBLE_FORFEIT` (both teams
+  §Open decisions). A mid-event withdrawal is handled as it happens; `DOUBLE_FORFEIT` (both teams
   lose, pf/pa 0) remains first-class.
 - **Draws:** v1 **disallows draws** — tied regulation games are resolved (sudden-death / tiebreak) so
   every completed game has a winner. The `draws` schema field is reserved for a future rule; the
-  sort key needs no draw arithmetic. (Recorded in `OPEN-DECISIONS.md` in case the org wants tied
+  sort key needs no draw arithmetic. (Recorded in §Open decisions in case the org wants tied
   games.)
 
 ## 6. Finalize (lock + fan-out), recompute, and unfinalize
@@ -224,3 +224,18 @@ Ordering matters:
 - [ ] Boston backfill workstream (incl. playoffs) + verification + finalize fan-out
 - [ ] Event page cards wired to API; admin generator/score/finalize UI
 - [ ] Update `system-docs/docs/data.md` + `services.md`
+
+## Open decisions
+
+League-rule/product choices specific to games, schedules & standings. Keep global `D#`s; the
+[index](../OPEN-DECISIONS.md) maps every decision to its owning RFC.
+
+| # | Decision | Recommended default | Status |
+|---|---|---|---|
+| D1 | **Draws in games** — may a regulation game end tied? Default: v1 disallows ties (resolved by a tiebreak, e.g. sudden-death) so every completed game has a winner; the `draws` field stays reserved. If ties are allowed, they count as 0.5W/0.5L and the sort key becomes wins → draws → net → pf. | No ties in v1; resolve | [ ] |
+| D2 | **Forfeit/withdrawal score** — how is a forfeited or unplayed game scored? **Resolved:** no fixed rule is designed for — forfeits are niche, so when one happens the admin records the game status and score directly (forfeit remains a first-class game status). | Admin records per game (status + score) | [x] (2026-09-01) |
+| D3 | **Mid-event withdrawal** — what happens to a withdrawn team's remaining games? **Resolved:** no automatic default-win rule; the admin handles the withdrawal as it happens (record forfeits / adjust). | Admin handles as it happens | [x] (2026-09-01) |
+| D4 | **Double forfeit** — both teams absent. **Resolved:** both record a loss, pf/pa 0 — admin sets the game status/scores. | Both lose, 0–0 | [x] (2026-09-01) |
+| D5 | **DNS / never-played teams** — excluded from placement and from circuit points. Confirmed? (DNS = `status: WITHDRAWN|DNS` at finalize-check; finalize warns if a participant has zero games.) | Exclude DNS from placement + points | [ ] |
+| D6 | **Bye representation** — round robin: **virtual** (no game row; team rests; GP = N−1); swiss: a **`BYE`-status game row** with no pf/pa and no win credited — never an unresolved `SCHEDULED` game. Confirm, or should a bye credit a win? | Split as stated | [ ] |
+| D7 | **Swiss tiny fields** — ≤ 4 teams → force ROUND_ROBIN. Confirm N and the down-pair relaxation. | Force round robin for N ≤ 4 | [ ] |

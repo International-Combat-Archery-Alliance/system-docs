@@ -64,4 +64,4 @@ any interruption.
 - Profiles reads are cheap and consistent with the source of truth (written at finalize, not on read).
 - The events table carries a denormalized projection by design (standard single-table pattern).
 - Placement ties: teams sharing a placement get the same integer; points mapping for tied/playoff
-  depth is a circuit setting ([RFC-0004](../rfcs/0004-circuits.md) and `OPEN-DECISIONS.md`).
+  depth is a circuit setting ([RFC-0004](../rfcs/0004-circuits.md) §Open decisions).

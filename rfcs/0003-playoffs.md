@@ -3,7 +3,7 @@
 > Status: **Draft** · Date: 2026-08-31 (revised after adversarial review)
 > Depends on: RFC-0001 (teams), RFC-0002 (games/standings/status)
 > Decisions: ADR-0005 (generate-then-edit), RFC-0002 §6 (placement authority)
-> Open rule choices: `OPEN-DECISIONS.md`
+> Open rule choices: §Open decisions (below)
 
 ## 1. Background
 
@@ -92,7 +92,7 @@ covered by fixture tests for N = 3…16 (including non-power-of-2 fields).
   never the stored placement.
 - **Points for playoff depth** come from the circuit's placement table (`points.placement[]`,
   RFC-0004) keyed on this `placement` — a semifinalist is rewarded above a round-1 loser by default
-  (table config; see RFC-0004/OPEN-DECISIONS).
+  (table config; see RFC-0004 §Open decisions).
 - **Finalize precondition (RFC-0002 §6):** no unresolved PLAYOFF games — a bracket stuck on a
   disputed/no-show game is resolved by recording a result or `FORFEIT`. There is **no
   `qualifyingOnly` mode** (decision D11): every bracket is expected to finish — playoff games are
@@ -121,3 +121,13 @@ covered by fixture tests for N = 3…16 (including non-power-of-2 fields).
 - [ ] Champion + bracket-adjusted placement in finalize; circuit points keyed on placement
 - [ ] Finalize refuses while any playoff game is unresolved (no qualifyingOnly mode)
 - [ ] Admin override controls
+
+## Open decisions
+
+League-rule/placement choices specific to playoffs. Keep global `D#`s; the
+[index](../OPEN-DECISIONS.md) maps every decision to its owning RFC.
+
+| # | Decision | Recommended default | Status |
+|---|---|---|---|
+| D9 | **Placement authority** — official `placement` = bracket-adjusted final order (champ 1st, runner-up 2nd, losing semifinalists 3rd/4th by qualifying rank, etc.), with qualifying order shown as "Qualifying Rank". Confirm. | Bracket-adjusted placement | [ ] |
+| D11 | **Stuck brackets** — what if a playoff bracket can't be resolved? **Resolved:** assume every bracket finishes — playoffs are just recorded games. Admins resolve disputes via game status/score entry; there is **no `qualifyingOnly` mode** in v1. Accepted risk: a genuinely unresolved game blocks finalize. | No qualifyingOnly; resolve via results/forfeits | [x] (2026-09-01) |
