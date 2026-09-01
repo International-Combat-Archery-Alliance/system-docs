@@ -44,7 +44,9 @@ Code-level facts that constrain this migration (verified round 2):
   (login-side) so the SSM floor cannot rot silently.
 - **Rotation:** mint keypair → add `kid` → flip `currentKid` → publish public keys to JWKS + SSM in
   the same step; retain old `user-*` kids until prior refresh-period tokens expire (or the next
-  forced logout). Rotation never requires a service redeploy.
+  forced logout); when a `kid` is retired, **delete its private key from the SSM param** (accumulated
+  private keys make a stolen param worth more). Rotation never requires a service redeploy, but it
+  DOES require `ssm:PutParameter` on `/userJwtSigningKeys` and `/jwtPublicKeys` in `login`'s role.
 
 ## Cutover (simplified: forced re-login — accepted as the one-time cost)
 
@@ -65,7 +67,9 @@ is allowed to issue it.**
    service rejects), so do not pause between them.
 3. **Flip `login`, then purge, back-to-back in the maintenance window:** start issuing RS256, then
    **purge all `REFRESH_TOKEN#*` records** in `login-api` (the authoritative global logout) and
-   remove HS256 signing material. Two load-bearing details:
+   remove HS256 signing material. **This flip deploy must also remove `/jwtSigningKeys` from
+   `login/cmd/config.go`'s startup fetch + IAM** (login itself no longer needs it after the purge —
+   nothing legacy remains to validate). Three load-bearing details:
    - **Flip-before-purge ordering is required:** if the purge ran first, warm pre-flip `login`
      containers (old code until AWS recycles them) could accept HS256 refresh cookies and re-create
      records after the purge, resurrecting sessions.
@@ -83,21 +87,28 @@ is allowed to issue it.**
    without a change, cached users see authenticated-but-broken UI for up to an hour after the purge.
    Bump the `userInfo`/`authStatus` localStorage keys in this deploy **or** wire refresh-failure →
    clear into `authMiddleware`. Then users re-login via Google and get RS256 cookies.
-4. **Retire `/jwtSigningKeys` safely:** rename the param to a tombstone at cutover, observe ≥ 24h
-   (the Lambda warm-container recycle bound) with **zero** `missing SSM parameter` logs across the
-   five service log groups, then delete it. Renaming has identical failure semantics to deletion, so
-   it is a live probe for any stack that still fetches it.
-5. **Cutover verification (scripted `make smoke-prod`, per repo):** fresh Google login → RS256 token
-   → 200 on every service; an HS256-fixture token → 401 everywhere; unknown `kid` → JWKS/SSM refetch
-   then clean 401/200 as appropriate. This suite is also what defines "botched" for the rollback
-   below.
+4. **Cutover verification — immediately, in the same window (scripted `make smoke-prod`, per repo):**
+   fresh Google login → RS256 token → 200 on every service; an HS256-fixture token → 401 everywhere;
+   unknown `kid` → JWKS/SSM refetch then clean 401/200 as appropriate. **This suite defines
+   "botched"** for the rollback below — run it before the tombstone step, not after.
+5. **Retire `/jwtSigningKeys` safely:**
+   - **Preserve the value first.** SSM has no recycle bin — deletion is permanent, and the rollback
+     below requires the symmetric material to exist *after* the tombstone. Export the current value
+     to an access-controlled store (scoped SSM param or encrypted file, MFA-protected), record a
+     scheduled destruction date, and note who may read it during the observe window.
+   - **Then rename the param to a tombstone**, observe ≥ 24h (the Lambda warm-container recycle
+     bound) with **zero** `missing SSM parameter` logs across **all six log groups (five services +
+     login)**, then delete. Renaming has identical failure semantics to deletion, so it is a live
+     probe for any stack that still fetches it.
 
-**Rollback of a botched flip** (defined by step 5's smoke failing) is: revert the `auth` pin in all
-five service repos and redeploy **all five** — restoring `/jwtSigningKeys` **before** their first
-old-version cold start (their config fetches exit on a missing param) — then redeploy the previous
-`login` image. Neither "restore the param" nor "redeploy old login" alone does anything post-step-2:
-no deployed stack reads the param anymore, and an HS256 login issues tokens every RS256-only service
-rejects. Pre-write the revert checklist; run the step-5 smoke before touching anything.
+**Rollback of a botched flip** (defined by step 4's smoke failing) is: revert the `auth` pin in all
+five service repos and redeploy **all five** — restoring `/jwtSigningKeys` (from the access-controlled
+copy preserved in step 5) **before** their first old-version cold start (their config fetches exit on
+a missing param) — then redeploy the previous `login` image. Neither "restore the param" nor
+"redeploy old login" alone does anything post-step-2: no deployed stack reads the param anymore, and
+an HS256 login issues tokens every RS256-only service rejects. Pre-write the revert checklist; run
+the step-4 smoke before touching anything. If step 5's tombstone has already run, the preserved value
+is your only way back — keep its access control tight and its destruction date explicit.
 
 ### Why this is acceptable
 
@@ -156,8 +167,10 @@ rejects. Pre-write the revert checklist; run the step-5 smoke before touching an
       `/userJwtSigningKeys` login-only; publish public keys to JWKS + SSM at once
 - [ ] All services: bump `auth`, JWKS + SSM-public load (non-fatal), **remove `/jwtSigningKeys`
       from `cmd/config.go` fetch + `template.yml` IAM; CI grep gate**
-- [ ] Cutover (single maintenance window): flip login → purge `REFRESH_TOKEN#*` (exact filter,
-      dry-run, out-of-band) → **frontend userInfo/cache-key bump** → rename `/jwtSigningKeys`
-      tombstone → observe 24h → delete → smoke (RS256 fixture 200, HS256 fixture 401)
+- [ ] Cutover (single maintenance window): flip login (issue RS256; **remove `/jwtSigningKeys` from
+      login config** too) → purge `REFRESH_TOKEN#*` (exact filter, dry-run, out-of-band) → frontend
+      userInfo/cache-key bump → **smoke immediately (RS256 fixture 200, HS256 fixture 401)** →
+      preserve symmetric value (access-controlled, destruction date) → rename tombstone → observe
+      24h (6 log groups incl. login) → delete
 - [ ] Local dev RS256 keypair; dev key unreachable in prod (`!isLocal()` + test)
 - [ ] Update `docs/auth.md`, `docs/data.md`, `docs/services.md`, `docs/architecture.md` at cutover

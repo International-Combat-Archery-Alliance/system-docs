@@ -36,7 +36,11 @@ Requirements:
   `SecureString` is capped at 4 KB and two RSA-2048 keys already exceed it on the first rotation.
   Upgrade path: sign via AWS KMS (no plaintext private key at all).
 - **Claims:** `{sub: <clientId>, token_type: "machine", roles: ["m2m:<callee-scope>"], aud:
-  "icaa-api", iss: "icaa.world", iat, exp (5 min)}`, header `{"alg":"RS256","kid":"machine-*","typ":"JWT"}`.
+  "<callee>-api", iss: "icaa.world", iat, exp (5 min)}`, header `{"alg":"RS256","kid":"machine-*","typ":"JWT"}`.
+  **`aud` is per-callee** (the callee service's own audience, e.g. `profiles-api`), NOT the global
+  `icaa-api` — so a leaked machine token is not replayable against a second service even if it
+  declared the same scope string. `ValidateMachineToken` enforces the callee's specific `aud` +
+  exact scope.
 - **Scope is exact, never prefix.** The callee's internal route requires the **literal scope for that
   callee** (e.g. `m2m:player-profiles` for `player-profiles-api`). A token minted for `clientId A`
   with `roles: ["m2m:player-profiles"]` is **not** valid on a route requiring `m2m:other`. The auth
@@ -85,12 +89,26 @@ The callee's CI spec-diffs (`oasdiff`) before deploy.
 
 ### m2m endpoint hardening
 
-- `POST /login/v1/m2m-tokens` is internet-facing and NOT Google-gated, so: API-Gateway **throttle**
-  (e.g. 5 rps) and a `clientId`-scoped rate cap; **CloudWatch alarm on `invalid_client` 401 spikes**
-  (leak/brute-force signal) and on caller-side roster-write M2M failures.
+- `POST /login/v1/m2m-tokens` is internet-facing and NOT Google-gated, so it needs real
+  rate-limiting — **API Gateway HTTP API v2 has no per-route throttling/usage plans**, so the
+  control must be:
+  - an **AWS WAF rate rule** scoped to the `/login/*/m2m-tokens` path (preferred; account-level
+    includes `api.icaa.world`), **and/or**
+  - a **DynamoDB-backed per-`clientId` limiter** inside login (TLL counters; Lambda in-memory
+    counters don't survive instance churn), with a **short-term credential lockout** after N failed
+    attempts per `clientId`.
+- Fix a documented **bcrypt cost** (10–12) so the CPU budget per attempt is known, and **equalize
+  the unknown-`clientId` path** with a dummy bcrypt compare so clientId existence is not a timing
+  oracle.
+- **CloudWatch alarm on `invalid_client` 401 spikes** (leak/brute-force signal) and on caller-side
+  roster-write M2M failures — wired to an actual countermeasure, not just an alert.
 - **Rotation runbook couples both stores:** update the bcrypt `secretRounds[]` + the SSM value
   together, then **roll the caller** (`sam deploy` or recycle) — the caller reads SSM at startup, so
-  a rotated secret silently breaks roster writes until its instances recycle. Documented, not implicit.
+  a rotated secret silently breaks roster writes until its instances recycle. Keep the previous round
+  in `secretRounds[]` until all callers have recycled, then remove it. Documented, not implicit.
+- **Internal-route residual:** a leaked machine token can read `{name, email}` for any player UUID
+  (UUIDs are public in the directory) — rate-limit/anomaly-alarm the internal route, and keep the
+  scope string unique per callee.
 
 ### Local dev
 
@@ -131,7 +149,9 @@ The callee's CI spec-diffs (`oasdiff`) before deploy.
    record (login table); `/machineJwtSigningKeys` (login-only) + `/jwtPublicKeys` (all services);
    add throttling + alarms.
 2. **IAM:** grant caller role `ssm:GetParameter` on `/m2m/<clientId>/secret`; login role on
-   `/machineJwtSigningKeys`. Deploy both stacks.
+   `/machineJwtSigningKeys` **and `ssm:PutParameter` on `/machineJwtSigningKeys`,
+   `/userJwtSigningKeys`, and `/jwtPublicKeys`** (rotation cannot run without PutParameter).
+   Deploy both stacks.
 3. Callee: declare the internal route + `m2m:<scope>` in its spec; deploy.
 4. Caller: generate client pinned to the callee tag; wire wrapper; deploy.
 5. **Smoke after every deploy** (scripted — `make smoke-prod`, owned per repo): machine token → 200;

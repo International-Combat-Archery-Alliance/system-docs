@@ -52,8 +52,11 @@ Game:                PK = "GAME#<eventId>"          SK = "GAME#<phase>#<round%02
 - `eligibilityRule?` — the fixed withdrawal/forfeit rule chosen at generation time (§6).
 - **Registration close:** moving to `IN_PROGRESS` closes registration by updating the **existing**
   `registrationCloseTime` field (already `required` in the spec and enforced in the registration
-  handlers) — there is exactly one close concept, not a second field, and it is **preserved inside
-  the existing `UpdateEvent` rebuild** (`events/events.go`) so admin edits can never reset it.
+  handlers) — there is exactly one close concept, not a second flag to drift. **Implementation
+  requirement:** today the `UpdateEvent` rebuild (`events/events.go`) writes `RegistrationCloseTime`
+  from the incoming PATCH payload, so an admin edit *can* move the close time; that is acceptable
+  (it's a single authoritative field), but the RFC's "close at IN_PROGRESS" behavior must be set by
+  mutating that same field — not by adding a parallel field.
 
 ## 4. Schedule generation (generate-then-edit)
 

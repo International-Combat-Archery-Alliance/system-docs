@@ -50,8 +50,8 @@ New shape:
    whose `projectionsCompleteAt` never arrived so an interrupted finalize is visible, not silent.
 4. **Single recompute path:** `POST /events/v1/{eventId}/recompute` (admin) re-runs the fan-out
    deterministically from the committed games/standings and the snapshots **frozen at finalize** (the
-   editable participation snapshot is re-read only when unfinalizing). This is the *only* repair
-   path, and it is what RFC-0002/0004 point all refresh operations at.
+   editable participation snapshot is re-read only when unfinalizing). This is the single repair
+   path, and it is what RFC-0002/0004 point all recompute operations at.
 
 ## Why not event-driven CDC
 

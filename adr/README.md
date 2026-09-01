@@ -20,5 +20,6 @@ Each ADR is a standalone file with a stable status:
 | 0005 | [Schedules & results use generate-then-edit](0005-schedule-generate-then-edit.md) | Accepted | 2026-08-31 |
 | 0006 | [Service-to-service HTTP with JWT machine auth](0006-internal-http-machine-auth.md) | Accepted | 2026-08-31 |
 | 0007 | [User JWTs migrate to RS256 (login-owned key, JWKS verification)](0007-user-jwts-rs256.md) | Accepted | 2026-08-31 |
+| 0008 | [Session & admin hygiene in the existing login (security hardening)](0008-session-admin-hygiene.md) | Accepted | 2026-08-31 |
 
 Numbering is global (not per-RFC). RFCs and system docs reference ADRs by number.
