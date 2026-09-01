@@ -7,6 +7,11 @@ They complement `../docs/` (which describes how the platform *is*) by describing
 *will be* — per feature area. Cross-cutting decisions are recorded separately as
 [Architecture Decision Records](../adr/README.md).
 
+> **Product context:** the *what and why* for these features — personas, scope, roadmap, and the
+> product-level decisions — lives in **PRD-0001 ([../prd/0001-competition-platform.md](../prd/0001-competition-platform.md))**.
+> If an RFC drifts from what we're building, reconcile against the PRD.
+> See [../prd/README.md](../prd/README.md) for how PRDs are written.
+
 ## Status lifecycle
 
 Each RFC has a `Status` field that moves as work progresses:
@@ -34,7 +39,9 @@ recorded so work isn't blocked) live in **[OPEN-DECISIONS.md](OPEN-DECISIONS.md)
 | 0004 | [Circuits](0004-circuits.md) | Draft | 0001, 0002 (points hook) |
 | 0005 | [Player Profiles](0005-player-profiles.md) | Draft | 0002 (history tab, after RFC-0002 ships) |
 
-**Recommended build order (staged, from adversarial review):**
+## Recommended build order
+
+Staged, from adversarial review:
 
 1. **0005 bio + directory first** — net-new service, zero interaction with the payment flow. Events
    tab is explicit "pending until 0002". Includes the **email-backfill pass** (hard prerequisite for
