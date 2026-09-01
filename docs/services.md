@@ -12,7 +12,7 @@ All backend services are Go, REST-ish, deployed as AWS Lambda container images v
 
 | Service | Base path | Owns |
 |---|---|---|
-| `login` | `/login` | Sessions & auth cookies: Google OAuth exchange, token refresh, logout |
+| `login` | `/login` | Sessions & auth cookies: Google OAuth exchange, token refresh, logout. **Becoming the token authority**: RS256 signing keys (private, login-only), `GET /.well-known/jwks.json` for public key distribution, and `POST /login/v1/m2m-tokens` for scoped machine-to-machine tokens (ADR-0006/0007) |
 | `articles-api` | `/articles` | Blog/news article CMS + publish workflow |
 | `assets-api` | `/assets` | Virtual folder/file management, presigned S3 uploads, CDN URLs |
 | `donation-api` | `/donations` | Creating one-off Stripe checkout sessions (Stripe is the store) |
