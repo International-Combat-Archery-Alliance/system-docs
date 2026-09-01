@@ -60,7 +60,7 @@ Most state lives in DynamoDB, one table per service, all in `us-east-1`. A coupl
 
 | Parameter | Used by |
 |---|---|
-| `/jwtSigningKeys` | all services (JWT validation), login (signing) |
+| `/jwtSigningKeys` | all services (JWT validation), login (signing) — **planned change:** migrates to RS256; services verify via `login`'s JWKS + `/jwtPublicKeys`, and this symmetric param is retired ([ADR-0007](../adr/0007-user-jwts-rs256.md)) |
 | `/adminEmails` | login (role assignment) |
 | `/newrelic-license-key` | all services (OTLP export) |
 | `/stripeSecretKey`, `/stripeEndpointSecret` | donation-api, event-registration |

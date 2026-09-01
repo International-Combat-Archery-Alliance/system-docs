@@ -60,6 +60,8 @@ The org has 15 repos. All are Go-based unless noted.
 | [docs/auth.md](docs/auth.md) | Google OAuth, JWT cookies, admin roles, token refresh |
 | [docs/data.md](docs/data.md) | DynamoDB single-table designs, S3, Stripe-as-store |
 | [docs/infrastructure.md](docs/infrastructure.md) | AWS/Cloudflare deployment, secrets, CI/CD |
+| [rfcs/](rfcs/README.md) | Proposed per-feature designs (teams, games/standings, playoffs, circuits, player profiles) |
+| [adr/](adr/README.md) | Architecture decision records (the *why* behind cross-cutting decisions) |
 
 ## Local development
 

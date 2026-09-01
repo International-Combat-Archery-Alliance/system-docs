@@ -1,5 +1,14 @@
 # System Architecture
 
+> **Planned change:** until now, services never call each other (coupling is limited to shared auth
+> cookies). Under [ADR-0006](../adr/0006-internal-http-machine-auth.md) and
+> [ADR-0007](../adr/0007-user-jwts-rs256.md), `login` becomes the platform's **token authority with a
+> JWKS endpoint**: other services will fetch `/.well-known/jwks.json` from `login` to verify tokens
+> (RS256), and a machine-token client-credentials endpoint (`POST /login/v1/m2m-tokens`) will enable
+> scoped machine-to-machine calls. That adds a narrow, read-oriented runtime dependency on `login`
+> for verification key material — the only exception to "the frontend is the only consumer" being
+> built (used first by `event-registration` → `player-profiles-api` roster validation, ADR-0002).
+
 ## Overview
 
 ICAA is a serverless platform:
@@ -9,7 +18,7 @@ ICAA is a serverless platform:
 - **One data store per service** — DynamoDB (single-table design), plus S3 for uploaded assets and Stripe for any money motion.
 - **A set of shared Go libraries** (`auth`, `middleware`, `captcha`, `email`, `payments`, `telemetry`) consumed by the services as semver-tagged modules.
 
-There is no central monolith and no message bus. Each service owns its own DynamoDB table and never calls another service directly; coupling is limited to the shared auth cookies and external systems (Stripe, MailerLite, SES, Turnstile, Google).
+There is no central monolith and no message bus. Each service owns its own DynamoDB table and never calls another service directly; coupling is limited to the shared auth cookies, external systems (Stripe, MailerLite, SES, Turnstile, Google), and — per the ADRs above — `login`'s JWKS/token endpoints.
 
 ```mermaid
 flowchart TB
@@ -61,7 +70,7 @@ flowchart TB
 | Assets | S3 `assets.icaa.world` | Public-read; write path is presigned POST |
 | Payments | Stripe | Checkout sessions + webhook confirmation; donations data lives in Stripe |
 | Email | MailerSend (send) / MailerLite (manage groups) | SES + Gmail also supported by the `email` lib |
-| Auth | Google + `auth` lib | Google ID tokens in, ICAA HS256 JWT cookies out |
+| Auth | Google + `auth` lib | Google ID tokens in, ICAA JWT cookies out (HS256 today; **RS256 + login JWKS per ADR-0007** — planned) |
 | Observability | OpenTelemetry → New Relic | `telemetry` lib wires Lambda-aware OTLP export |
 
 ## Typical request flow (event registration, paid)
@@ -97,7 +106,7 @@ sequenceDiagram
 
 ## Guiding conventions
 
-- **One service per concern**, small enough to run locally in a container; the frontend is the only consumer.
+- **One service per concern**, small enough to run locally in a container; the frontend is the only *user-facing* consumer (the planned exception: services read `login`'s JWKS/token endpoints — ADR-0006/0007).
 - **Single-table DynamoDB design** with `PK`/`SK`, a `GSI1` index for time-ordered listings, `Version` optimistic locking, and TTL for short-lived items.
 - **OpenAPI-first**: each service declares `spec/api.yaml`, generates Go handlers with `oapi-codegen`, and serves its spec at `<prefix>/openapi.json` + Swagger UI.
 - **Shared middleware & libs** instead of copy-paste: auth cookies, CORS, logging, tracing all come from `middleware`/`auth`/`telemetry`.
