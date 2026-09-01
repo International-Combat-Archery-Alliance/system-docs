@@ -93,11 +93,12 @@ The callee's CI spec-diffs (`oasdiff`) before deploy.
 **API Gateway HTTP API v2 has no per-route throttling/usage plans** (that is a REST-API v1 feature),
 so the control is two layers:
 
-**Layer 1 — AWS WAF rate rule (edge, before Lambda).** `AWS::WAFv2::WebACL` +
-`AWS::WAFv2::WebACLAssociation` on the login stage ARN. A rate-based rule (e.g. 20 req / 5 min per
-source IP, `AggregateKeyType: IP`) scoped to the path with an `AndStatement` + `ByteMatchStatement`
-matching the incoming URI path `/login/v1/m2m-tokens`. Stops floods/DoS before the Lambda ever runs;
-keys on IP only (cheap first line, botnets aside).
+**Layer 1 — edge rate limiting (optional, cost-conscious):** prefer **Cloudflare Rate Limiting** —
+`api.icaa.world` DNS is on Cloudflare, and if the record is **proxied** (orange-cloud) a single
+rate-limiting rule on `/login/v1/m2m-tokens` is **free** on the Free plan (keyed by IP, blocks before
+AWS). AWS WAF is **not free** ($5/mo ACL + $1/mo rule + per-request) — only use it if the record is
+DNS-only and the org accepts ~$6/mo; otherwise skip the edge layer. Zone queries confirm whether the
+record is proxied. Managed rule groups/bot control are out of scope (extra cost).
 
 **Layer 2 — DynamoDB per-`clientId` fixed-window counter + lockout (in `login`).** Targets the real
 threat: a *valid* clientId being hammered, bcrypt CPU burn, and brute-force guesses. New item family
@@ -172,7 +173,8 @@ attributes: windowCount, failCount, lockedUntil?, ttl   (ttl = end of the 60s wi
 1. `login`: declare `POST /login/v1/m2m-tokens` and `GET /login/.well-known/jwks.json` in its spec
    (`security: []`); provision `/m2m/<clientId>/secret` (SSM, caller role) + bcrypt `CLIENT#<id>`
    record (login table); `/machineJwtSigningKeys` (login-only) + `/jwtPublicKeys` (all services);
-   add the WAF rate rule + DDB `RATE#` limiter/lockout + alarms (§m2m endpoint hardening).
+   add edge rate limiting (Cloudflare rule if proxied, else WAF only if the ~$6/mo is accepted) +
+   the DDB `RATE#` limiter/lockout + alarms (§m2m endpoint hardening).
 2. **IAM:** grant caller role `ssm:GetParameter` on `/m2m/<clientId>/secret`; login role on
    `/machineJwtSigningKeys` **and `ssm:PutParameter` on `/machineJwtSigningKeys`,
    `/userJwtSigningKeys`, and `/jwtPublicKeys`** (rotation cannot run without PutParameter).
