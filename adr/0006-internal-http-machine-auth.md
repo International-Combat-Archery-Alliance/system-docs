@@ -136,6 +136,29 @@ attributes: windowCount, failCount, lockedUntil?, ttl   (ttl = end of the 60s wi
   (UUIDs are public in the directory) — rate-limit/anomaly-alarm the internal route, and keep the
   scope string unique per callee.
 
+### Origin bypass (api.icaa.world is proxied via Cloudflare)
+
+Cloudflare's edge rate limiting only covers traffic that actually transits Cloudflare. Two bypass
+vectors exist and must be assumed: the **default `execute-api` endpoint**
+(`https://<api-id>.execute-api.<region>.amazonaws.com`) is publicly reachable and does not go through
+Cloudflare, and **origin-IP discovery** (DNS history, certificate transparency) lets someone connect
+to the API Gateway origin directly while presenting `Host: api.icaa.world`.
+
+This does not break the security model — the DDB `RATE#` limiter runs app-level in `login` and caps
+floods regardless of path — but the edge controls are defense-in-depth only. Free hardening to close
+the bypass:
+
+1. **Host-header validation in the shared middleware** — reject any request whose `Host` isn't
+   `api.icaa.world` (localhost in dev). Kills the default-endpoint bypass before any handler;
+   fits the existing middleware + `BaseNamePrefix` pattern.
+2. **API Gateway custom-domain mutual TLS + Cloudflare Authenticated Origin Pulls** — truststore
+   contains Cloudflare's origin-pull CA; the origin refuses any TLS handshake that isn't Cloudflare's
+   client cert. Free (not WAF); covers the custom domain; combine with (1) for the default endpoint.
+3. `CF-Connecting-IP` is only trusted once the request is known to have come from Cloudflare
+   (established by (1)/(2)); only then may the rate limiter key on real client IP as well as `clientId`.
+4. AWS WAF remains the paid fallback if any of the above proves unworkable; it is otherwise out of
+   scope for the ~$0 monthly budget.
+
 ### Local dev
 
 - Local mode: development RSA keypair (private in local login config; public in local JWKS + dev
