@@ -73,8 +73,8 @@ settings:
   qualification:
     numQualifiers: 8
     requireEligible: true         # must be ELIGIBLE at qualification time
-    shortfall: RUN_SHORT          # RUN_SHORT | NEXT_ELIGIBLE | CANCEL — REQUIRES DECISION
-    declines: NEXT_ELIGIBLE       # how to fill declined slots — REQUIRES DECISION
+    shortfall: RUN_SHORT          # resolved (D19): admin-managed — computed list is a suggestion
+    declines: NEXT_ELIGIBLE       # resolved (D20): admin-managed — next-eligible suggestion, admin confirms
 ```
 
 ## 5. Points flow (the finalize fan-out)
@@ -117,8 +117,9 @@ When a member event finalizes (RFC-0002 §6, ADR-0003):
 - Sort circuit standings by `totalPoints` (default tiebreak: points → best single placement → event
   count → name — configurable).
 - Take top `numQualifiers` teams meeting `minEvents` + eligible; resolve **shortfall/declines** per
-  `settings.qualification` (decisions in `OPEN-DECISIONS.md`). Record `qualifiedTeamIds` on the
-  CIRCUIT item.
+  `settings.qualification` (decisions D19/D20 in `OPEN-DECISIONS.md`). **The computed list is a
+  suggestion**: the championship field is **admin-managed** — admins review and set the final
+  `qualifiedTeamIds` on the CIRCUIT item.
 - The **main event as a member event is a decision** — if allowed, its own finalize happens after
   qualification and its results must NOT re-rank the already-computed qualification list (guard).
 - Qualification is an admin action (`POST .../qualify`); the qualified list populates the
@@ -144,8 +145,9 @@ When a member event finalizes (RFC-0002 §6, ADR-0003):
 All consolidated in `OPEN-DECISIONS.md`; the ones blocking correct circuit implementation:
 `eligibilityMode` default + whose snapshots count toward the "stay stable" bar (retro vs prospective);
 `fieldSizeEffect` (small-event farming); tie splits for shared placements; `dropLowest` timing;
-points for playoff depth (now well-defined via `placement`); qualification shortfall/declines;
+points for playoff depth (now well-defined via `placement`);
 main-event-as-member-event; mid-season joins (points from join date, default).
+(Qualification shortfall/declines — D19/D20 — were **resolved** at design review: admin-managed field.)
 
 ## 10. UI (icaa.world)
 

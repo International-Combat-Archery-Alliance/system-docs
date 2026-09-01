@@ -94,9 +94,10 @@ event-registration transaction (§6), not a post-hoc write.
   frozen at finalize — post-finalize snapshot edits cannot retroactively change it (RFC-0004).
 - **A team has at most one participation row per event** — enforced by `AttributeNotExists` on the
   participation key (a second entry → 409; explicit re-activation path).
-- **Registration closes when the event moves to `IN_PROGRESS`** (enforced in the registration
-  handler, not just time-based). Late teams use the admin `late-team` flow (RFC-0002 §7) which
-  regenerates unplayed games preserving results.
+- **Registration close stays time-based** — the existing `registrationCloseTime` is the sole trigger;
+  moving the event to `IN_PROGRESS` does **not** auto-close it (decision D8, `OPEN-DECISIONS.md`).
+  Late teams use the admin `late-team` flow (RFC-0002 §7) which regenerates unplayed games preserving
+  results.
 - **Archived teams** cannot enter new events; history and projections remain.
 - Players may be on **≥ 1 team at once** in v1 (open rule — `OPEN-DECISIONS.md`).
 

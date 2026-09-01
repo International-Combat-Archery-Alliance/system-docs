@@ -49,23 +49,23 @@ Game:                PK = "GAME#<eventId>"          SK = "GAME#<phase>#<round%02
 - `status: OPENED | IN_PROGRESS | FINALIZED`, **optional in the API spec** (defaults server-side to
   `OPENED`; the live SPA admin form won't break when the schema first ships).
 - `championTeamId?` (set when a playoff bracket resolves).
-- `eligibilityRule?` — the fixed withdrawal/forfeit rule chosen at generation time (§6).
-- **Registration close:** moving to `IN_PROGRESS` closes registration by updating the **existing**
-  `registrationCloseTime` field (already `required` in the spec and enforced in the registration
-  handlers) — there is exactly one close concept, not a second flag to drift. **Implementation
-  requirement:** today the `UpdateEvent` rebuild (`events/events.go`) writes `RegistrationCloseTime`
-  from the incoming PATCH payload, so an admin edit *can* move the close time; that is acceptable
-  (it's a single authoritative field), but the RFC's "close at IN_PROGRESS" behavior must be set by
-  mutating that same field — not by adding a parallel field.
+- **Registration close stays time-based:** the existing `registrationCloseTime` field (already
+  `required` in the spec and enforced in the registration handlers) remains the **sole** trigger —
+  moving an event to `IN_PROGRESS` does **not** auto-close it (decision D8, `OPEN-DECISIONS.md`).
+  Late teams enter via the admin `late-team` flow (§7). There is exactly one close concept, not a
+  second flag to drift.
+- **No forfeit/withdrawal rule machinery** in v1 (decisions D2/D3/D4, `OPEN-DECISIONS.md`): when a
+  team forfeits or withdraws, the admin records the game status/score directly (§5); no
+  `eligibilityRule` is designed or stored.
 
 ## 4. Schedule generation (generate-then-edit)
 
 `POST /events/v1/{eventId}/games/generate` — body `{format, opts}`. Admin only. Registration must be
-closed (`IN_PROGRESS`) to generate. **Input is the event's `CONFIRMED` (paid) participation roster
-only** — ever-`REGISTERED`/unpaid rows are excluded, so schedules, standings, finalize, and circuit
-points can never include a team that didn't pay (RFC-0001 §6 lifecycle). Refuses if games exist
-unless `replace: true` and no game is `COMPLETED` **or `FORFEIT`/`DOUBLE_FORFEIT`** (a forfeit is a
-result — never destroyed by replace).
+closed (past `registrationCloseTime`) and the event moved to `IN_PROGRESS` to generate. **Input is
+the event's `CONFIRMED` (paid) participation roster only** — ever-`REGISTERED`/unpaid rows are
+excluded, so schedules, standings, finalize, and circuit points can never include a team that didn't
+pay (RFC-0001 §6 lifecycle). Refuses if games exist unless `replace: true` and no game is
+`COMPLETED` **or `FORFEIT`/`DOUBLE_FORFEIT`** (a forfeit is a result — never destroyed by replace).
 
 **Round robin** (`format: ROUND_ROBIN`):
 - Circle method. Games = **N(N−1)/2** real games; **rounds = N−1 (even N) or N (odd N)**; games per
@@ -90,7 +90,7 @@ result — never destroyed by replace).
 Both generators are pure + deterministic (fixtures for N=3…16, odd/even, mirror, and swiss edge
 cases) and live in a `schedules/` (or `games/`) domain package.
 
-## 5. Games, standings & the fixed league rules
+## 5. Games, standings & forfeit/withdrawal effects
 
 `PUT /events/v1/{eventId}/games/{gameId}` (admin) sets `status` + scores. The transaction carries a
 **`ConditionCheck` on the EVENT item (`status != FINALIZED`)** so post-finalize edits are structurally
@@ -111,27 +111,26 @@ A team must have ≥ 1 completed/forfeit game **and `CONFIRMED` participation** 
 finalize; teams with none are `DNS`/unranked (excludes no-shows and unpaid entries from placements
 and from circuit points — RFC-0004).
 
-### The league-rule block (must be closed before finalize ships — defaults recorded, not hard-coded guesses)
+### Effects of forfeits & withdrawals (admin-recorded, not rule-driven)
 
-- **Withdrawal/dropout rule is fixed per event, chosen at generation time and stored on the EVENT**
-  (`eligibilityRule`): default = "played games stand; every remaining game vs the withdrawn team is a
-  fixed default win (e.g. 5-0) for the opponent." This removes schedule-luck from seed/points
-  outcomes and survives admin changes. `DOUBLE_FORFEIT` covers both-absent.
+- **Forfeits/withdrawals are recorded per game by the admin** (`status: FORFEIT`/`DOUBLE_FORFEIT` +
+  scores) — there is **no fixed default-win rule** designed for v1 (decisions D2/D3/D4,
+  `OPEN-DECISIONS.md`). A mid-event withdrawal is handled as it happens; `DOUBLE_FORFEIT` (both teams
+  lose, pf/pa 0) remains first-class.
 - **Draws:** v1 **disallows draws** — tied regulation games are resolved (sudden-death / tiebreak) so
   every completed game has a winner. The `draws` schema field is reserved for a future rule; the
   sort key needs no draw arithmetic. (Recorded in `OPEN-DECISIONS.md` in case the org wants tied
   games.)
-- **Forfeit default score** is part of `eligibilityRule` (5-0 default; must be a legal regulation
-  score).
 
 ## 6. Finalize (lock + fan-out), recompute, and unfinalize
 
 `POST /events/v1/{eventId}/finalize` (admin), idempotent.
 
 **Preconditions:** all QUALIFYING games resolved (`COMPLETED`/`FORFEIT`/`DOUBLE_FORFEIT`/`CANCELLED`/
-`BYE`) **and no unresolved PLAYOFF games** (a bracket stuck on a disputed forfeit requires a
-`qualifyingOnly` decision first — RFC-0003). Warn + require explicit confirm when a participant has
-zero games but is not marked `WITHDRAWN`/DNS.
+`BYE`) **and no unresolved PLAYOFF games** — a bracket dispute is resolved by recording a result or
+forfeit (there is **no `qualifyingOnly` mode**, decision D11; a genuinely unresolved game blocks
+finalize — accepted risk, RFC-0003). Warn + require explicit confirm when a participant has zero
+games but is not marked `WITHDRAWN`/DNS.
 
 **Flow (per ADR-0003):**
 1. **Atomic transaction:** EVENT → `status: FINALIZED`, `projectionsStatus: PENDING` (+Version lock).
@@ -174,15 +173,15 @@ order** (RFC-0003: champion 1st, runner-up 2nd, etc.). The qualifying sort is a 
 | POST | `/events/v1/{eventId}/recompute` | admin | Re-run fan-out (ADR-0003) |
 | POST | `/events/v1/{eventId}/unfinalize` | admin | Auditor-gated reopen (§6) |
 | GET | `/events/v1/players/{playerId}/history` | public | Player participation history from `RESULT#<eventId>#<teamId>` projections (RFC-0005 §6) |
-| PATCH | `/events/v1/{eventId}` | admin | Status transitions (`OPENED→IN_PROGRESS` closes registration) |
+| PATCH | `/events/v1/{eventId}` | admin | Status transitions (`OPENED→IN_PROGRESS→FINALIZED`; registration close stays time-based) |
 
-`Event` schema gains `status` (optional), `championTeamId?`, `eligibilityRule?`.
+`Event` schema gains `status` (optional) and `championTeamId?`.
 
 ## 8. UI (icaa.world)
 
 - Event page **Standings** + **Schedule** cards render from the API; hardcoded arrays removed once
   Boston data is backfilled (§9).
-- Admin: generator form (format/options + rule selection), score-entry rows, finalize/recompute/
+- Admin: generator form (format/options), score-entry rows, finalize/recompute/
   unfinalize with confirmations.
 
 ## 9. Migration
@@ -207,7 +206,7 @@ Ordering matters:
 
 - Regenerate scheduling mid-event (blocked once a result exists, per §4); odd fields (virtual byes);
 - Team drops out / no-shows (DNS exclusion from placement + points); forfeits incl. double;
-- Finalize with an unresolved bracket (needs `qualifyingOnly` or resolution); interrupted fan-out
+- Finalize with an unresolved bracket (must be resolved via results/forfeits — no `qualifyingOnly` mode); interrupted fan-out
   (completion marker + recompute); score correction post-finalize (unfinalize → edit → finalize);
 - Late team add preserving results (RFC-0001 `late-team` flow); cross-phase ordering on the schedule.
 

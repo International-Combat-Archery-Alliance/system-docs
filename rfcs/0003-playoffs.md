@@ -94,21 +94,21 @@ covered by fixture tests for N = 3…16 (including non-power-of-2 fields).
   RFC-0004) keyed on this `placement` — a semifinalist is rewarded above a round-1 loser by default
   (table config; see RFC-0004/OPEN-DECISIONS).
 - **Finalize precondition (RFC-0002 §6):** no unresolved PLAYOFF games — a bracket stuck on a
-  disputed/no-show game must either be resolved (admin `FORFEIT`) or the event finalized with an
-  explicit `qualifyingOnly` mode that records no champion and flags bracket placement PENDING.
+  disputed/no-show game is resolved by recording a result or `FORFEIT`. There is **no
+  `qualifyingOnly` mode** (decision D11): every bracket is expected to finish — playoff games are
+  just games we record. A genuinely unresolved game blocks finalize (accepted risk).
 
 ## 7. UI (icaa.world)
 
 - Event page **Playoffs** card (bracket tree) rendered from `GET .../bracket`.
-- Admin: generator form (type + field size), bracket score entry, slot-override controls, and an
-  explicit "finalize as qualifying-only" vs "resolve first" warning.
+- Admin: generator form (type + field size), bracket score entry, and slot-override controls.
 
 ## 8. Edge cases
 
 - Regenerating after a result exists (blocked); byes interacting with layout (fixture-tested);
 - double-elim reset-final rule; forfeits advancing teams; team dropout mid-bracket (FORFEIT slot,
   no auto-advance); bracket generated from a qualifying ranking that then changes (blocked by the
-  read-only rule in §5); finalize with an unresolved bracket (qualifyingOnly decision).
+  read-only rule in §5); finalize with an unresolved bracket (must be resolved — no qualifyingOnly mode).
 
 ## 9. Checklist
 
@@ -119,5 +119,5 @@ covered by fixture tests for N = 3…16 (including non-power-of-2 fields).
 - [ ] `GET .../bracket` + UI bracket card
 - [ ] Double-elimination generator (W/L tracks + reset final) + tests
 - [ ] Champion + bracket-adjusted placement in finalize; circuit points keyed on placement
-- [ ] `qualifyingOnly` finalize mode; PENDING bracket flag
+- [ ] Finalize refuses while any playoff game is unresolved (no qualifyingOnly mode)
 - [ ] Admin override controls

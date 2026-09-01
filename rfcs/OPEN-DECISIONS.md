@@ -7,10 +7,12 @@ accommodate the alternatives where it matters. Decisions here are called out fro
 [RFC-0003](0003-playoffs.md), [RFC-0004](0004-circuits.md), [RFC-0005](0005-player-profiles.md),
 and the RFC index.
 
-**Decide BEFORE code starts:** D8 (registration-close behavior — changes the live paid flow),
-D11 (`qualifyingOnly` escape hatch availability), D2/D3/D4 (forfeit/withdrawal rule stored semantics),
-and D19/D20 (qualification shortfall/declines — external people-and-money consequences). The rest are
-safe to ship with their defaults.
+**Resolved at design review (2026-09-01):** the items previously marked "decide before code" are now
+decided — D8 (keep the existing time-based registration close), D2/D3/D4 (forfeits/withdrawals are
+recorded by admins per game; no automatic rule machinery), D11 (no `qualifyingOnly` mode; every
+playoff bracket completes via recorded results/forfeits), and D19/D20 (qualification is an
+admin-managed field — the computed list is a suggestion). The remaining items below are safe to ship
+with their recorded defaults.
 
 ## How to use this
 
@@ -26,13 +28,13 @@ safe to ship with their defaults.
 | # | Decision | Recommended default | Status |
 |---|---|---|---|
 | D1 | **Draws in games** — may a regulation game end tied? Default: v1 disallows ties (resolved by a tiebreak, e.g. sudden-death) so every completed game has a winner; the `draws` field stays reserved. If ties are allowed, they count as 0.5W/0.5L and the sort key becomes wins → draws → net → pf. | No ties in v1; resolve | [ ] |
-| D2 | **Forfeit default score** — the fixed score for a forfeited/unplayed game (used in the stored `eligibilityRule`). Must be a legal regulation score, and it must not be a league-arbitrary number that inflates net. | 5–0 (must equal a real attainable regulation score) | [ ] · decide before code |
-| D3 | **Mid-event withdrawal** — fixed rule chosen per event at generation time (stored on EVENT): played games stand; every remaining game vs the withdrawn team = default win (D2) for the opponent. Rejects the "admin decides per round" alternative that makes seeds schedule-luck. | Fixed default-win rule, chosen per event | [ ] · decide before code |
-| D4 | **Double forfeit** — both teams absent: both record a loss, pf/pa 0. | Both lose, 0–0 | [ ] · decide before code |
+| D2 | **Forfeit/withdrawal score** — how is a forfeited or unplayed game scored? **Resolved:** no fixed rule is designed for — forfeits are niche, so when one happens the admin records the game status and score directly (forfeit remains a first-class game status). | Admin records per game (status + score) | [x] (2026-09-01) |
+| D3 | **Mid-event withdrawal** — what happens to a withdrawn team's remaining games? **Resolved:** no automatic default-win rule; the admin handles the withdrawal as it happens (record forfeits / adjust). | Admin handles as it happens | [x] (2026-09-01) |
+| D4 | **Double forfeit** — both teams absent. **Resolved:** both record a loss, pf/pa 0 — admin sets the game status/scores. | Both lose, 0–0 | [x] (2026-09-01) |
 | D5 | **DNS / never-played teams** — excluded from placement and from circuit points. Confirmed? (DNS = `status: WITHDRAWN|DNS` at finalize-check; finalize warns if a participant has zero games.) | Exclude DNS from placement + points | [ ] |
 | D6 | **Bye representation** — round robin: **virtual** (no game row; team rests; GP = N−1); swiss: a **`BYE`-status game row** with no pf/pa and no win credited — never an unresolved `SCHEDULED` game. Confirm, or should a bye credit a win? | Split as stated | [ ] |
 | D7 | **Swiss tiny fields** — ≤ 4 teams → force ROUND_ROBIN. Confirm N and the down-pair relaxation. | Force round robin for N ≤ 4 | [ ] |
-| D8 | **Late registration** — registration closes when the event is set `IN_PROGRESS`. Late teams only via admin `late-team` (regenerates unplayed games, preserves results). Confirm the operationally simple version — **this changes the live paid flow** (today time-based `registrationCloseTime`). | Close at IN_PROGRESS | [ ] · decide before code |
+| D8 | **Late registration** — when does event sign-up close? **Resolved:** keep the existing time-based `registrationCloseTime` — no change to the live paid flow (moving an event to IN_PROGRESS does not auto-close). Late teams still enter via the admin late-team flow. | Keep time-based close (no change) | [x] (2026-09-01) |
 
 ## Playoffs / placement
 
@@ -40,7 +42,7 @@ safe to ship with their defaults.
 |---|---|---|---|
 | D9 | **Placement authority** — official `placement` = bracket-adjusted final order (champ 1st, runner-up 2nd, losing semifinalists 3rd/4th by qualifying rank, etc.), with qualifying order shown as "Qualifying Rank". Confirm. | Bracket-adjusted placement | [ ] |
 | D10 | **Points for playoff depth** — the circuit points table keys on `placement`, so a semifinalist beats a round-1 loser. Confirm the default table (1:100, 2:80, 3:65, 4:55, 5:45, 6:35, 7:25, 8:15) or provide a league table. | Default table ($5) | [ ] |
-| D11 | **`qualifyingOnly` finalize** — when a bracket can't resolve (disputed forfeit), finalize with no champion + PENDING bracket, or refuse. **The escape hatch must ship IN finalize's UI/API** — otherwise a stuck bracket makes the event unfinalizeable forever. | Refuse by default; qualifyingOnly = explicit opt-in (must be reachable) | [ ] · decide before code |
+| D11 | **Stuck brackets** — what if a playoff bracket can't be resolved? **Resolved:** assume every bracket finishes — playoffs are just recorded games. Admins resolve disputes via game status/score entry; there is **no `qualifyingOnly` mode** in v1. Accepted risk: a genuinely unresolved game blocks finalize. | No qualifyingOnly; resolve via results/forfeits | [x] (2026-09-01) |
 
 ## Circuits
 
@@ -53,8 +55,8 @@ safe to ship with their defaults.
 | D16 | **Tied placements** — teams sharing a placement integer both get the higher placement's points? | Both get higher placement | [ ] |
 | D17 | **Drop-lowest** — per-team across-events; applied at read time. Confirm on/off and `dropLowest` count. | 0 (off) in v1; read-time when on | [ ] |
 | D18 | **Mid-season join** — team joining after some events: points from join date (default) vs retroactive. | From join date | [ ] |
-| D19 | **Qualification shortfall** — eligible teams < `numQualifiers`: run short? fill with next eligible? cancel main event? | Run short | [ ] · decide before code |
-| D20 | **Qualified-team declines** — alternates mechanism. | NEXT_ELIGIBLE | [ ] · decide before code |
+| D19 | **Qualification shortfall** — fewer eligible teams than slots. **Resolved:** the championship field is admin-managed — the computed list is a suggestion (seeded by defaults) and admins review/set the final field. | Admin-managed (computed list is a suggestion) | [x] (2026-09-01) |
+| D20 | **Qualified-team declines** — a qualified team declines. **Resolved:** admin-managed — the suggestion rolls to the next eligible team; admins confirm the replacement. | Admin-managed (next-eligible suggestion) | [x] (2026-09-01) |
 | D21 | **Main event as a member event** — is the championship also scored for points? (If yes, its finalize must not re-rank the qualification list used to fill it.) | No (main event is the target, not a scorer) | [ ] |
 
 ## Teams / players / product

@@ -66,7 +66,8 @@ towards — **added onto the existing live platform**, not replacing it.
 - Captain/player **self-service** roster and profile editing (v1 is admin-managed).
 - Player transfers / waivers / team splits-and-merges; free-agent circuit scoring.
 - Live score-entry timers and per-game lineups; roster **lock** windows (documented, not enforced).
-- Player circuit points, profile photo **uploads** (URL in v1), personalized dashboards.
+- Player circuit points, player/captain self-service photo **uploads** (photos are admin-set in v1 —
+  see §4.1), personalized dashboards.
 
 ## 4. Feature scope
 
@@ -93,9 +94,10 @@ check that a roster player is a real player):
 
 ### 4.1 Player Profiles — [RFC-0005](../rfcs/0005-player-profiles.md)
 A real player directory and individual pages. Admins manage profiles (including creating lightweight
-player records so rosters can refer to real players). Public pages are shown only after data is
-verified. **User outcome:** every rostered player has a page and (once history ships) a verified
-record.
+player records so rosters can refer to real players) and can set a **profile photo**, uploaded through
+the existing assets service (admin-authenticated upload, standard image hosting). Public pages are
+shown only after data is verified. **User outcome:** every rostered player has a page with a verified
+record and (where set) a photo.
 
 ### 4.2 Teams & Rosters — [RFC-0001](../rfcs/0001-teams-and-rosters.md)
 Persistent global teams with evolving rosters, a per-event "who's on the team" record, a public team
@@ -147,23 +149,21 @@ each RFC.
 > **Ordering within Phase 6:** double-elimination playoff support lands before switching event sign-up
 > to use real teams.
 
-## 6. Product decisions to confirm (the open league-rule/rule choices)
+## 6. Product decisions (what was confirmed)
 
-These are real product choices (mostly league rules) that the team must confirm. The recommended
-default is recorded so implementation isn't blocked. **The full log (28 items) is in
-[OPEN-DECISIONS.md](../rfcs/OPEN-DECISIONS.md); this is the shortlist that must be decided *before
-corresponding work starts*.** In user terms:
+The league-rule/product choices that were open at design time, and how they were resolved. The full
+log (28 items) is in [OPEN-DECISIONS.md](../rfcs/OPEN-DECISIONS.md); the items below were decided at
+design review (2026-09-01). The remaining items are safe to ship with their recorded defaults.
 
-| Decision | The question, in plain language | Recommended default |
+| Decision | The question, in plain language | Resolution |
 |---|---|---|
-| **D8 — When registration closes** | When does a team stop being able to sign up for an event, and how do late teams get in? | Registration closes when the event starts; late teams only via admin. *Changes the live paid flow — decide first.* |
-| **D2/D3/D4 — Forfeits & withdrawals** | What's the score when a team forfeits or withdraws mid-event? Do both teams get a loss if both no-show? | Played games stand; remaining games vs a withdrawn team = a default forfeit win (5–0); double-forfeit = both lose 0–0. Fixed per event when the schedule is made. |
-| **D11 — Stuck-bracket escape hatch** | If a playoff bracket can't resolve (disputed/no-show game), can the event still be finalized? | Finalize refuses by default; an explicit "qualifying-only" mode is an opt-in that must be reachable so no event gets permanently stuck. |
-| **D19/D20 — Not enough qualifiers / declines** | If fewer teams qualify than slots, or a qualified team declines, what happens? | Run with a short field; fill declined slots from the next-eligible teams. *External people-and-money consequences — decide first.* |
+| **D8 — When registration closes** | When does a team stop being able to sign up for an event, and how do late teams get in? | Keep the existing time-based close — no change to the live paid flow. Late teams still enter via an admin action. |
+| **D2/D3/D4 — Forfeits & withdrawals** | What's the score when a team forfeits or withdraws mid-event? | Niche enough not to design around: admins record the game status/score when it happens (forfeit semantics stay first-class). |
+| **D11 — Stuck brackets** | If a playoff bracket can't resolve (disputed/no-show game), can the event still be finalized? | Assume every bracket finishes — playoffs are just recorded games; admins resolve via game status/score. No separate mode. Accepted risk: an unresolved game blocks finalize. |
+| **D19/D20 — Not enough qualifiers / declines** | If fewer teams qualify than slots, or a qualified team declines, what happens? | Admin-managed championship field — the computed list is a suggestion; admins review and set the final field. |
 
-The remaining decisions (draws, byes, points tables, roster-stability rules, eligibility rules,
-players on multiple teams, when pages become public, etc.) are safe to ship with their recorded
-defaults, but are all listed for confirmation in
+The remaining decisions (draws, byes, points tables, roster-stability rules, players on multiple
+teams, when pages become public, etc.) are safe to ship with their recorded defaults, all listed in
 [OPEN-DECISIONS.md](../rfcs/OPEN-DECISIONS.md).
 
 ## 7. How we'll know it's working (product-level success criteria)
@@ -175,7 +175,8 @@ defaults, but are all listed for confirmation in
 - **Teams are persistent:** a team's page shows its history across its actual events, and (in the final
   phase) signing up for an event lets you pick your real team.
 - **Player pages are real:** all 48 static player profiles become live pages whose history is drawn
-  from the events they actually played — not re-keyed by an admin.
+  from the events they actually played — not re-keyed by an admin — and whose photos admins can set
+  via the standard upload path.
 - **Admin runs an event end-to-end:** an admin can take one event from sign-up through scheduling,
   scores, and (where applicable) playoffs and results with correct standings and placements — no
   spreadsheets.
@@ -200,7 +201,9 @@ is listed with the trigger that would make us revisit it:
   leagues/events on the platform.
 - **Free-agent (individual) circuit scoring / player circuit points** — revisit after team circuits
   are proven.
-- **Profile photo uploads** — revisit once there's a natural upload path (URL-only in v1).
+- **Self-service photo uploads** — revisit in the self-service program; players/captains uploading
+  will need a scoped upload path with per-user limits (likely machine-auth or a dedicated non-admin
+  presign path) and a dedicated profile-photo location in the assets service.
 
 For what's deferred purely *within* this program, see §3 Non-goals.
 

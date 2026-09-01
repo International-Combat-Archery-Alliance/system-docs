@@ -32,7 +32,8 @@ written as a per-player projection at event finalize
 ### Non-goals (defer)
 - Player self-service editing (link profile to login account via email). `userInfoContext` exposes
   email today, so this is a plausible later increment, but v1 is admin-written.
-- Profile photo *uploads* — v1 keeps `profilePicture` as a URL (reuse `assets-api` later).
+- Non-admin profile photo *uploads* — v1 photo changes are **admin-only**, uploaded via `assets-api`
+  (see "Photo uploads" below); player/captain self-upload is deferred (PRD-0001 §8).
 - Any tournament/result CRUD — results come from events (`GET /events/v1/players/{playerId}/history`).
 
 ## 3. Player identity & the events-service boundary
@@ -99,6 +100,16 @@ Base path: `https://api.icaa.world/profiles`. Mirrors the existing DESIGN.md min
 Response shape mirrors `GET /events/v1`: `{ data: [...], cursor, hasNextPage }`. Auth = shared
 `icaaCookieAuth`/`icaaBearerAuth`, `admin` scope for writes (same pattern as all services).
 
+### Profile-photo uploads (v1 — admin-only, via assets-api)
+
+- Admins upload through the existing `assets-api` (admin-authenticated presigned upload + confirm,
+  under a `profiles` folder) and then set `profilePicture` on the profile record to the resulting
+  CDN URL. `player-profiles-api` stays URL-agnostic — it never calls `assets-api` for this, so no new
+  service-to-service call is introduced (the first S2S call remains roster validation, ADR-0002).
+- **Future — self-service uploads** would need a scoped path with per-user limits and a dedicated
+  `profiles/<playerId>` location in the assets service — likely machine-auth or a dedicated
+  non-admin presign scope (recorded as a revisit trigger in PRD-0001 §8). Explicitly out of v1.
+
 ## 6. Where results come from
 
 The events service exposes player history:
@@ -154,6 +165,7 @@ Roster migrations for existing team registrations are handled in RFC-0001 §Migr
    trustworthy). Tabs: Overview (bio) / Events (history from events API) / Pictures.
 4. Replace `src/components/profiles/*.json` on the branch — remove once seeded.
 5. Roster flows (RFC-0001) use the player directory search to pick/create players.
+6. Admin profile-photo upload (assets presign → confirm → set `profilePicture`) on the edit route.
 
 ## 9. Edge cases / open decisions
 
@@ -162,7 +174,9 @@ Roster migrations for existing team registrations are handled in RFC-0001 §Migr
   (PII — §3).
 - **Name changes** — master record updates forward; competition snapshots preserve the past (good).
 - **Position set** — confirm enum matches the UI select exactly (`Rear Guard | Forward | Centerback | Flex`).
-- **Photo management** — URL for v1; `assets-api` uploads later.
+- **Photo management** — v1: admin-only uploads via `assets-api` (presigned upload + confirm,
+  `profiles` folder); public pages just render the CDN URL. Self-service uploads are deferred
+  (PRD-0001 §8).
 - **Player deletion** — archive only; never hard-delete (UUIDs referenced by rosters/projections).
 
 ## 10. Implementation checklist
@@ -175,3 +189,4 @@ Roster migrations for existing team registrations are handled in RFC-0001 §Migr
 - [ ] Deploy (`ApiMappingKey: profiles`) + verify against prod
 - [ ] Codegen + query client + `/player-profiles/:playerId` page; delete static JSON
 - [ ] Email backfill pass against registration data
+- [ ] Admin profile-photo upload via assets-api (presign + confirm) + SPA edit UI
