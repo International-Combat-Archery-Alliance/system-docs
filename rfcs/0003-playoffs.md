@@ -76,7 +76,7 @@ covered by fixture tests for N = 3…16 (including non-power-of-2 fields).
 - **Qualifying games become READ-ONLY once any PLAYOFF game exists** — enforced in RFC-0002's
   `PUT /games` validation (a bracket's seeds come from qualifying; editing them mid-bracket silently
   corrupts seeds). Score corrections after brackets exist go through **unfinalize → edit → finalize**
-  (RFC-0002 §6) — recompute only re-runs the fan-out of an already-`FINALIZED` event.
+  (RFC-0002 §6) — recompute only re-stamps an already-`FINALIZED` event.
 - `GET /events/v1/{eventId}/bracket` (public) returns the playoff game graph for tree rendering;
   `GET .../games` returns the flat schedule (QUALIFYING before PLAYOFF).
 - A slot that cannot be filled (team dropped out) → admin resolves as `FORFEIT` (no auto-advance

@@ -43,6 +43,16 @@ decision lives, plus a couple of cross-cutting notes that aren't per-feature que
 - **D28 — `docs/architecture.md` update** — a follow-up task, not a decision: when the first
   service-to-service call lands, amend `docs/architecture.md`'s "frontend is the only consumer"
   wording. Track it with the ADR-0006 implementation work.
+- **D29 — Player history model** — recorded (2026-09-02): ADR-0003's per-player `RESULT#` projection
+  is **superseded by [ADR-0009](../adr/0009-player-history-participation-index.md)**: a player-event
+  index written at participation time + team-history result stamping at finalize (one bounded
+  transaction); history reads derive via 1 Query + 1 BatchGetItem. Amends RFC-0002 §6/§11 and
+  RFC-0005 §6.
+- **D30 — Finalize visibility (no CloudWatch alarm)** — recorded (2026-09-02): the
+  `icaaFinalizePending` CloudWatch metric/alarm/SNS requirement (RFC-0002 §6/§11) is **dropped**.
+  Finalize is synchronous and bounded (lock + one stamping transaction, ADR-0009), so an
+  interruption is a visible request error and `recompute` heals idempotently; visibility is
+  `finalizeCompleteAt` + admin-UI state. No monitoring infrastructure for finalize.
 
 ## How to use this
 

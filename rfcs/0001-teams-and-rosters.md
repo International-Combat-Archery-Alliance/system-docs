@@ -2,7 +2,7 @@
 
 > Status: **Draft** · Date: 2026-08-31 (revised after adversarial review)
 > Depends on: RFC-0005 (player UUIDs)
-> Decisions: ADR-0001 (co-location), ADR-0002 (player validation), ADR-0003 (fan-out), ADR-0004 (admin authority)
+> Decisions: ADR-0001 (co-location), ADR-0002 (player validation), ADR-0009 (history index), ADR-0004 (admin authority)
 
 ## 1. Background
 
@@ -42,7 +42,13 @@ Roster membership:      PK = "TEAM#<teamId>"               SK = "MEMBER#<playerI
 
 Player current teams:   PK = "PLAYER#<playerId>"           SK = "MEMBER#<teamId>"
                         teamId, teamName, role, joinedAt, leftAt?
-                        (same partition family as RESULT# items from RFC-0002/ADR-0003)
+                        (same partition family as the HISTORY# player-event index from RFC-0002/ADR-0009)
+
+Player event index:     PK = "PLAYER#<playerId>"           SK = "HISTORY#<eventId>#<teamId>"
+                        eventId, teamId, teamName, eventName, eventDate
+                        (written in the §6 participation transaction, rolled back by the expiry
+                        transaction, extended by snapshot-adjust and late-team; mirrors
+                        participation.rosterSnapshot — ADR-0009)
 
 Event participation:    PK = "EVENT#<eventId>"             SK = "TEAM#<teamId>"
                         eventId, teamId, registrationId (→ REGISTRATION item), seed,
@@ -55,7 +61,7 @@ Team history:           PK = "TEAM#<teamId>"               SK = "EVENT#<eventId>
 
 **GSI rule (blocking/pinning):** only **EVENT masters** (`GSI1PK="EVENT"`) and **TEAM masters**
 (`GSI1PK="TEAM"`, `GSI1SK="NAME#<normalizedName>#<teamId>"` — the new `TEAM_NAME` index) carry
-`GSI1PK`/`GSI1SK`. Participation, membership, history, RESULT#, GAME, and CIRCUIT items carry **no
+`GSI1PK`/`GSI1SK`. Participation, membership, history, GAME, and CIRCUIT items carry **no
 GSI attributes — enforced by an adapter test that proves `GetEvents` (GSI1 query,
 `begins_with(GSI1SK,"EVENT#")`) returns exactly event masters after every item type is written.**
 This prevents any new item type from silently corrupting the site's events listing.
@@ -108,7 +114,8 @@ event-registration transaction (§6), not a post-hoc write.
 2. Snapshot active roster; validate against `event.allowedTeamSizeRange`.
 3. **One transaction:** `REGISTRATION` (keyed `REGISTRATION#<captainEmail>` — captain resolved
    server-side from the team; never client-supplied), `REG_INTENT` (Stripe), participation
-   (`REGISTERED`, snapshot, `AttributeNotExists`), team-history row, event counters.
+   (`REGISTERED`, snapshot, `AttributeNotExists`), player-event index rows (ADR-0009), team-history
+   row, event counters.
 4. Stripe checkout metadata `EMAIL` = captain email (unchanged — the webhook resolves this row).
 5. **Paid webhook transaction:** `REGISTRATION → paid`, delete `REG_INTENT`, participation →
    `CONFIRMED`. **The webhook write must PRESERVE `teamId`** — today `UpdateRegistrationToPaid`
@@ -160,7 +167,7 @@ migration tool only.
 2. Group legacy `TeamRegistration`s by `(normalizedName, captainEmail)` — explicit **review report /
    merge tool**, never an auto-merge, for ambiguous names.
 3. Mint `TEAM` + `MEMBER#` rows (UUID via profiles, name/email snapshot); participation + snapshots
-   from each registration's `players[]`.
+   from each registration's `players[]`; player-event index rows (ADR-0009).
 4. **Stamp `teamId` onto existing REGISTRATION rows with an additive `UpdateItem SET` only** (never a
    full `Put` — a stale full Put can race the paid-webhook write and flip `Paid` back to `false`).
    **Also fix the other direction:** `UpdateRegistrationToPaid` must not delete the stamp (see §6).
@@ -201,7 +208,7 @@ League-rule/product choices specific to teams & rosters. Keep global `D#`s; the
 | # | Decision | Recommended default | Status |
 |---|---|---|---|
 | D8 | **Late registration** — when does event sign-up close? **Resolved:** keep the existing time-based `registrationCloseTime` — no change to the live paid flow (moving an event to IN_PROGRESS does not auto-close). Late teams still enter via the admin late-team flow. | Keep time-based close (no change) | [x] (2026-09-01) |
-| D22 | **Player on multiple teams** — allowed in v1 (projection key already supports it via `RESULT#<eventId>#<teamId>`). | Allowed; review when self-service lands | [ ] |
+| D22 | **Player on multiple teams** — allowed in v1 (the `HISTORY#<eventId>#<teamId>` index key already supports it — ADR-0009). | Allowed; review when self-service lands | [ ] |
 | D23 | **Team name uniqueness** — enforced via name reservation + 409. Confirm (vs best-effort + merge). | Enforce via reservation | [ ] |
 | D24 | **Post-launch team merges** — two teams turn out to be the same org: ship a merge operation or explicitly defer (keep survivor, re-point future events)? | Defer mechanics; future | [ ] |
 | D26 | **Free agents** — individual (ByIndividual) registrations coexist but earn no circuit points in v1. Confirm. | Unscored in v1 | [ ] |

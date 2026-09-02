@@ -1,7 +1,12 @@
 # ADR-0003: Player results derived via per-player projection
 
-> Status: **Accepted** · Date: 2026-08-31 (revised 2026-08-31)
+> Status: **Superseded by [ADR-0009](0009-player-history-participation-index.md)** · Date: 2026-08-31
+> (revised 2026-08-31; superseded 2026-09-02)
 > Applies to: RFC-0002, RFC-0005
+>
+> **Supersession note:** ADR-0009 replaces per-player `RESULT#` stat rows with a player event index
+> (written at participation) + team-history result stamping at finalize. This record is kept for
+> history and for the reasoning that motivated the projection.
 
 ## Context
 

@@ -36,9 +36,9 @@ notes (D27/D28).
 | # | Title | Status | Depends on |
 |---|---|---|---|
 | 0001 | [Teams & Rosters](0001-teams-and-rosters.md) | Draft | 0005 (player UUIDs) |
-| 0002 | [Games, Schedules & Standings](0002-games-schedules-standings.md) | Draft | 0001; 0004 hook interface (stubbed into finalize fan-out) |
+| 0002 | [Games, Schedules & Standings](0002-games-schedules-standings.md) | Draft | 0001; 0004 contribution rows in the finalize stamping transaction |
 | 0003 | [Playoffs](0003-playoffs.md) | Draft | 0001, 0002 |
-| 0004 | [Circuits](0004-circuits.md) | Draft | 0001, 0002 (points hook) |
+| 0004 | [Circuits](0004-circuits.md) | Draft | 0001, 0002 (contribution rows in the finalize stamping transaction) |
 | 0005 | [Player Profiles](0005-player-profiles.md) | Draft | 0002 (history tab, after RFC-0002 ships) |
 
 ## Recommended build order
@@ -50,10 +50,11 @@ Staged, from adversarial review:
    0001's migration).
 2. **0001 Stage A** — additive teams API + admin UI + `TEAM_NAME` GSI. No registration-flow changes.
 3. **0001 Stage B — backfill** legacy registrations → teams (after 0005 email pass).
-4. **0002** — Event.status, games CRUD, generators, standings, finalize **with 0004's points hook
-   stubbed from day one** (editing that transaction twice = rework). Boston backfill workstream.
+4. **0002** — Event.status, games CRUD, generators, standings, finalize (**lock + one bounded
+   stamping transaction**; 0004's contribution rows live there — additive, no stub needed).
+   Boston backfill workstream.
 5. **0003 single-elimination** — bracket + placement authority.
-6. **0004 circuits** — implement the stubbed hook, standings, qualification.
+6. **0004 circuits** — contribution rows in the stamping transaction, standings, qualification.
 7. **0003 double-elimination**.
 8. **0001 Stage C — the registration form swap** last, once teams data is trustworthy.
 
@@ -66,11 +67,13 @@ Design decisions that shape multiple RFCs are recorded as ADRs in
 |---|---|
 | 0001 | Competition domain (teams, rosters, games, standings, circuits) stays co-located in `event-registration` |
 | 0002 | Player references validated server-side at roster-write; name/email captured as snapshot |
-| 0003 | Player results derived via per-player projection (post-transaction fan-out, idempotent, completion-marked) |
+| 0003 | Player results derived via per-player projection — **superseded by [ADR-0009](../adr/0009-player-history-participation-index.md)** |
 | 0004 | Roster authority is admin-only for v1 |
 | 0005 | Schedules & results use generate-then-edit |
 | 0006 | Service-to-service HTTP with JWT machine auth (RS256 via login, JWKS-verified, spec-declared routes) |
 | 0007 | User JWTs migrate from HS256/shared-secret to RS256 (login-owned key, JWKS verification) |
+| 0008 | Session & admin hygiene fixes in login (logout revokes refresh; atomic rotation + reuse detection; de-admin purge) |
+| 0009 | [Player history via participation index + team-history stamping](../adr/0009-player-history-participation-index.md) — supersedes 0003 |
 
 ## Platform note: service-to-service calls
 
