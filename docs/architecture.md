@@ -70,7 +70,7 @@ flowchart TB
 | Assets | S3 `assets.icaa.world` | Public-read; write path is presigned POST |
 | Payments | Stripe | Checkout sessions + webhook confirmation; donations data lives in Stripe |
 | Email | MailerSend (send) / MailerLite (manage groups) | SES + Gmail also supported by the `email` lib |
-| Auth | Google + `auth` lib | Google ID tokens in, ICAA JWT cookies out (HS256 today; **RS256 + login JWKS per ADR-0007** — planned) |
+| Auth | Google + `auth` lib | Google ID tokens in, RS256 ICAA JWT cookies out, verified via login JWKS |
 | Observability | OpenTelemetry → New Relic | `telemetry` lib wires Lambda-aware OTLP export |
 
 ## Typical request flow (event registration, paid)

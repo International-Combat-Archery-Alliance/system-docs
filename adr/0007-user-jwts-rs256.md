@@ -174,3 +174,19 @@ is your only way back — keep its access control tight and its destruction date
       24h (6 log groups incl. login) → delete
 - [ ] Local dev RS256 keypair; dev key unreachable in prod (`!isLocal()` + test)
 - [ ] Update `docs/auth.md`, `docs/data.md`, `docs/services.md`, `docs/architecture.md` at cutover
+## Implementation amendment (INT-6, 2026-09)
+
+As built, three points differ from the decision above:
+
+- **No SSM `/jwtPublicKeys` floor.** Services verify via the login JWKS endpoint over HTTP
+  only (non-fatal startup fetch, fail-closed). The SSM mirror was dropped to keep key
+  material out of every service's IAM; the accepted tradeoff is that login availability
+  bounds verification availability during cold starts and unknown-`kid` refetches. Re-add
+  an SSM floor only if JWKS availability proves insufficient.
+- **No refresh-record purge at cutover.** Refresh validation is signature-first *and*
+  record-bound, so pre-cutover rows are unreachable once HS256 no longer verifies; DynamoDB
+  TTL removes them. The only residual window is unexpired pre-flip access tokens (≤1 h).
+- **Logout revokes.** `DELETE /login/session` accepts the refresh cookie (OR'd with the
+  access cookie), so the middleware populates the refresh-token id and the handler deletes
+  the record — closing ADR-0008 item 1. Without a refresh cookie it still clears both
+  cookies, as before.
