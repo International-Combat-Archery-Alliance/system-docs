@@ -1,9 +1,9 @@
 # RFC-0002: Games, Schedules & Standings
 
 > Status: **Draft** · Date: 2026-08-31 (revised after adversarial review)
-> Depends on: RFC-0001 (teams & event participation); RFC-0004 points hook (interface stubbed into
-> the finalize fan-out, §11)
-> Decisions: ADR-0003 (projection/race fixes), ADR-0005 (generate-then-edit)
+> Depends on: RFC-0001 (teams & event participation); RFC-0004 contribution rows (in the finalize
+> stamping transaction, §11)
+> Decisions: ADR-0009 (history/placement stamping), ADR-0005 (generate-then-edit)
 > Open rule choices: §Open decisions (below)
 
 ## 1. Background
@@ -22,8 +22,8 @@ first-class, API-backed data.
   event's confirmed teams; the pre-generation state is an empty schedule (a real state, not a
   placeholder).
 - Standings **derived deterministically from games** at read time; no stored standings row.
-- Event lifecycle: `OPENED → IN_PROGRESS → FINALIZED`; finalize locks the event, then fans out
-  player projections + circuit points through a single idempotent recompute path (ADR-0003).
+- Event lifecycle: `OPENED → IN_PROGRESS → FINALIZED`; finalize locks the event, then stamps
+  team-history results + circuit points in one bounded transaction (ADR-0009).
 - Replace the hardcoded event-page data with API-backed cards.
 - **Live schedule view during the event:** the Schedule card doubles as the tournament's "upcoming
   games" view — it revalidates the public games endpoint while the event is `IN_PROGRESS`, so
@@ -49,7 +49,7 @@ Game:                PK = "GAME#<eventId>"          SK = "GAME#<phase>#<round%02
   phase. `PLAYOFF` sorts before `QUALIFYING` lexically ('P' < 'Q'); the handler must order QUALIFYING
   before PLAYOFF explicitly (generator tests assert SK ordering).
 - **Rule:** only EVENT masters and TEAM masters carry `GSI1PK`/`GSI1SK`; **GAME, participation,
-  membership, history, RESULT#, and CIRCUIT items carry NO GSI attributes** (prevents poisoning the
+  membership, team-history, and CIRCUIT items carry NO GSI attributes** (prevents poisoning the
   existing GSI1 events-list query that `begins_with(GSI1SK, "EVENT#")`).
 
 ### Event changes
@@ -113,8 +113,8 @@ impossible (not just handler-policy). Validation:
 - `FORFEIT` requires `forfeitSide`; `DOUBLE_FORFEIT` = neither side shows (both record a loss, pf/pa
   0) — representable.
 - `BYE` needs no scores, counts as resolved, and touches nothing in standings.
-- After finalize, edits require **unfinalize → edit → finalize** (§6); `recompute` only re-runs the
-fan-out of an event that is still `FINALIZED`.
+- After finalize, edits require **unfinalize → edit → finalize** (§6); `recompute` only re-stamps
+  an event that is still `FINALIZED`.
 
 **Standings** (`GET /events/v1/{eventId}/standings`, public, derived on read): per team `gp, wins,
 losses, pf, pa, net`. Sort: **wins ↓ → net ↓ → pf ↓ → name**. Only `COMPLETED`/`FORFEIT` QUALIFYING
@@ -135,7 +135,7 @@ and from circuit points — RFC-0004).
   sort key needs no draw arithmetic. (Recorded in §Open decisions in case the org wants tied
   games.)
 
-## 6. Finalize (lock + fan-out), recompute, and unfinalize
+## 6. Finalize (lock + stamping), recompute, and unfinalize
 
 `POST /events/v1/{eventId}/finalize` (admin), idempotent.
 
@@ -145,33 +145,37 @@ forfeit (there is **no `qualifyingOnly` mode**, decision D11; a genuinely unreso
 finalize — accepted risk, RFC-0003). Warn + require explicit confirm when a participant has zero
 games but is not marked `WITHDRAWN`/DNS.
 
-**Flow (per ADR-0003):**
-1. **Atomic transaction:** EVENT → `status: FINALIZED`, `projectionsStatus: PENDING` (+Version lock).
-   That is the whole lock; no team-result rows are snapshot-stored from a pre-lock read.
-2. **Post-transaction idempotent fan-out:** player `RESULT#<eventId>#<teamId>` projections (from the
-   standings/snapshot **frozen at this instant**) and circuit contribution rows (RFC-0004) written in
-   chunked batches (≤ 25/request, `UnprocessedItems` retry loop).
-3. On completion: EVENT `projectionsCompleteAt = now`. **Delivered alarm (same PR as finalize, not a
-   someday):** CloudWatch custom metric `icaaFinalizePending` emitted when PENDING set; alarm
-   `FINALIZED_PENDING > 0 for 15 min` → SNS; runbook: "verify games committed → `POST recompute` →
-   confirm `projectionsCompleteAt` → clear alarm." The 10s Lambda timeout makes interruptions real.
+**Flow (per [ADR-0009](../adr/0009-player-history-participation-index.md)):** finalize is
+**synchronous and bounded** — two transactions, no background fan-out:
+1. **Lock transaction:** EVENT → `status: FINALIZED` (+Version lock). That is the entire lock; no
+   result rows are snapshot-stored from a pre-lock read (standings derive at read, ADR-0005).
+2. **Stamping transaction (one, bounded):** compute the final standings and bracket-adjusted
+   `placement` from the committed games (single derivation rule, RFC-0003 §6), then stamp
+   `result {record, pf, pa, placement}` on each participant's team-history item
+   (`TEAM#<teamId>/EVENT#<eventId>`, RFC-0001 §3) and write RFC-0004's circuit contribution rows —
+   idempotent keyed puts, ≤ ~48 actions at 16 teams, one `TransactWriteItems`. The same transaction
+   sets `finalizeCompleteAt = now` (admin-UI visibility only).
 
-**State-machine invariants (the whole pipeline):**
-- Artifacts exist ⇔ `status=FINALIZED ∧ projectionsStatus=COMPLETE`. Any other status/state includes
-  no `RESULT#`/contribution rows for the event.
-- **`recompute` refuses unless `status=FINALIZED`** — its legit uses are repairing an interrupted
-  fan-out and re-deriving artifacts after circuit/settings changes (RFC-0004 §5). After unfinalize,
-  the only path back is `finalize`.
-- **`finalize` always re-fans out the whole event** (never short-circuits on a marker).
+An interrupted finalize is a **visible request error**; `finalize`/`recompute` simply re-run and
+re-stamp (`finalize` never short-circuits on the marker). **There is no CloudWatch alarm or SNS for
+finalize** (decision D30, OPEN-DECISIONS.md): nothing runs in the background, so an interruption
+cannot be silent, and re-run heals it idempotently.
+
+**State-machine invariants:**
+- Stamped `result`/contribution rows exist ⇔ `status=FINALIZED`. Any other status/state includes
+  no stamped results for the event.
+- **`recompute` refuses unless `status=FINALIZED`** — its legit uses are re-deriving after
+  circuit/settings changes and healing a partially-committed finalize (RFC-0004 §5). After
+  unfinalize, the only path back is `finalize`.
+- **`finalize` always re-stamps the whole event** (never short-circuits).
 - **`unfinalize`** (admin, audited; records `{who, when, why}`) flips `FINALIZED → IN_PROGRESS` and
-  **clears `projectionsStatus` + `projectionsCompleteAt` in the same transaction**, then deletes
-  fan-out artifacts (idempotent keyed deletes, best-effort with retry). Score corrections then go
-  through edit → `finalize` again.
+  clears the stamped `result` rows, contribution rows, and `finalizeCompleteAt` — bounded updates in
+  one transaction. Score corrections then go through edit → `finalize` again.
 
 **Placement authority (one answer):** the official `placement` is the **bracket-adjusted final
 order** (RFC-0003: champion 1st, runner-up 2nd, etc.). The qualifying sort is a separate, displayed
-**"Qualifying Rank"** and never the stored placement. Circuit points and player projections consume
-`placement` only.
+**"Qualifying Rank"** and never the stored placement. Circuit points and player history consume
+`placement` only (stamped on team-history rows, ADR-0009).
 
 ## 7. API surface
 
@@ -182,10 +186,10 @@ order** (RFC-0003: champion 1st, runner-up 2nd, etc.). The qualifying sort is a 
 | PUT | `/events/v1/{eventId}/games/{gameId}` | admin | Enter score/status (§5); blocked when event FINALIZED |
 | GET | `/events/v1/{eventId}/standings` | public | Derived standings (§5) |
 | POST | `/events/v1/{eventId}/late-team` | admin | Add a team after generation; regenerates unplayed games preserving COMPLETED/FORFEIT (RFC-0001) |
-| POST | `/events/v1/{eventId}/finalize` | admin | Lock + fan-out (§6) |
-| POST | `/events/v1/{eventId}/recompute` | admin | Re-run fan-out (ADR-0003) |
+| POST | `/events/v1/{eventId}/finalize` | admin | Lock + bounded stamping (§6) |
+| POST | `/events/v1/{eventId}/recompute` | admin | Re-run stamping (ADR-0009) |
 | POST | `/events/v1/{eventId}/unfinalize` | admin | Auditor-gated reopen (§6) |
-| GET | `/events/v1/players/{playerId}/history` | public | Player participation history from `RESULT#<eventId>#<teamId>` projections (RFC-0005 §6) |
+| GET | `/events/v1/players/{playerId}/history` | public | Player history from the `HISTORY#` index + stamped team-history rows (RFC-0005 §6, ADR-0009) |
 | PATCH | `/events/v1/{eventId}` | admin | Status transitions (`OPENED→IN_PROGRESS→FINALIZED`; registration close stays time-based) |
 
 `Event` schema gains `status` (optional) and `championTeamId?`.
@@ -215,8 +219,9 @@ Ordering matters:
    canonical 7-0/38-8 player record (a 6-team single round robin is 15 games; 7 games means the
    Championships had playoffs). Map JSX names ("Renegades" vs "Boston Renegades") to the team
    identities minted from registration data. **Verify derived standings == the existing PNG/table
-   before cutover.** Then run the finalize fan-out so team pages and player profiles have real
-   history (RFC-0005's whole value prop is derived history).
+   before cutover.** Then run finalize so team-history results are stamped and player history
+   (via the participation index, RFC-0001 §6 / ADR-0009) is live — RFC-0005's whole value prop is
+   derived history.
 3. Add item types + the `TEAM_NAME` GSI to `infra/main.tf`, `docker-compose.yml` dynamo-setup, and
    `dynamo/db_test.go` together; poll `describe-table` for `ACTIVE` before deploying the search
    endpoint; adapter fails fast at startup if the index is missing.
@@ -226,7 +231,8 @@ Ordering matters:
 - Regenerate scheduling mid-event (blocked once a result exists, per §4); odd fields (virtual byes);
 - Event with no generated schedule yet (empty games list; page shows the "no schedule yet" empty state);
 - Team drops out / no-shows (DNS exclusion from placement + points); forfeits incl. double;
-- Finalize with an unresolved bracket (must be resolved via results/forfeits — no `qualifyingOnly` mode); interrupted fan-out
+- Finalize with an unresolved bracket (must be resolved via results/forfeits — no `qualifyingOnly` mode); interrupted
+  finalize (visible request error; re-run heals idempotently);
   (completion marker + recompute); score correction post-finalize (unfinalize → edit → finalize);
 - Late team add preserving results (RFC-0001 `late-team` flow); cross-phase ordering on the schedule.
 
@@ -237,11 +243,17 @@ Ordering matters:
 - [ ] Round-robin generator (N/odd-N/20-round arithmetic) + SK-order/balance fixtures
 - [ ] Swiss generator (score-group pairing, down-pair, no-rematch, byes) + fixture tests
 - [ ] Standings derivation + DNS exclusion + **CONFIRMED-participation-only** placement fixtures
-- [ ] Finalize lock/fan-out/completion marker; recompute (refuses unless FINALIZED); unfinalize (audited, clears markers)
-- [ ] **`icaaFinalizePending` CloudWatch metric + alarm + SNS + recompute runbook (same PR as finalize)**
-- [ ] Circuit points hook (RFC-0004) stubbed into fan-out from day one
+- [ ] Finalize lock + bounded stamping transaction (`result` stamps + contributions +
+      `finalizeCompleteAt`); recompute (refuses unless FINALIZED); unfinalize (audited, clears
+      stamps) — ADR-0009
+- [ ] No CloudWatch alarm for finalize: synchronous/bounded; visibility = request error + admin UI
+      state + idempotent re-run (decision D30)
+- [ ] Circuit contribution rows in the finalize stamping transaction (RFC-0004 §5) — additive, no
+      stub needed
+- [ ] Player event index in RFC-0001 participation transactions (intent/expiry/snapshot-adjust/
+      late-team) + `GET /events/v1/players/{playerId}/history` (ADR-0009)
 - [ ] `TEAM_NAME` GSI in terraform + docker-compose + db_test; GSI-attribute rule on new items
-- [ ] Boston backfill workstream (incl. playoffs) + verification + finalize fan-out
+- [ ] Boston backfill workstream (incl. playoffs) + verification + finalize stamping
 - [ ] Event page cards wired to API; admin generator/score/finalize UI
 - [ ] Live "upcoming games" schedule view (poll/revalidate games + standings while `IN_PROGRESS`)
 - [ ] Update `system-docs/docs/data.md` + `services.md`

@@ -6,13 +6,13 @@ All backend services are Go, REST-ish, deployed as AWS Lambda container images v
 - Each service declares its routes in an OpenAPI spec (`spec/api.yaml`, generated server via `oapi-codegen`), served live at `<prefix>/openapi.json` + Swagger UI. **This document describes what each service owns, not its routes** — for route-level detail, read the spec.
 - Common request behavior — OpenAPI validation, CORS, access logging, OTel tracing, Swagger UI — comes from the shared `middleware` library rather than per-service code.
 - Env vars come from SSM Parameter Store in prod; locally they come from `SAM local` env / `docker-compose`.
-- Secrets available in every function: SSM `/jwtSigningKeys` and `/newrelic-license-key`.
+- Secrets available in every function: SSM `/newrelic-license-key` (plus each service's own secrets below).
 
 ## At a glance
 
 | Service | Base path | Owns |
 |---|---|---|
-| `login` | `/login` | Sessions & auth cookies: Google OAuth exchange, token refresh, logout. **Becoming the token authority**: RS256 signing keys (private, login-only), `GET /.well-known/jwks.json` for public key distribution, and `POST /login/v1/m2m-tokens` for scoped machine-to-machine tokens (ADR-0006/0007) |
+| `login` | `/login` | Sessions & auth cookies: Google OAuth exchange, token refresh, logout. **The token authority**: RS256 signing keys (private, login-only), `GET /.well-known/jwks.json` for public key distribution, and `POST /login/v1/m2m-tokens` for scoped machine-to-machine tokens (ADR-0006/0007) |
 | `articles-api` | `/articles` | Blog/news article CMS + publish workflow |
 | `assets-api` | `/assets` | Virtual folder/file management, presigned S3 uploads, CDN URLs |
 | `donation-api` | `/donations` | Creating one-off Stripe checkout sessions (Stripe is the store) |
@@ -28,7 +28,7 @@ Google OAuth exchange and session management. Issues the auth cookies every othe
 
 - Accepts a Google ID token from the frontend, validates it, and returns `UserInfo` plus `ICAA_ACCESS_TOKEN` / `ICAA_REFRESH_TOKEN` cookies; refresh rotates the pair, logout revokes + clears.
 - Storage: DynamoDB `login-api` — refresh-token records (`PK/SK = REFRESH_TOKEN#<id>`, TTL 30 d).
-- Env/SSM: `/jwtSigningKeys`, `/adminEmails`. Local default: everyone is admin.
+- Env/SSM: `/userJwtSigningKeys`, `/machineJwtSigningKeys`, `/adminEmails`. Local default: everyone is admin.
 - Routes: `spec/api.yaml` in the `login` repo.
 
 ## articles-api — `/articles`

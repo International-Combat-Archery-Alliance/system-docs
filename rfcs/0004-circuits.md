@@ -2,7 +2,7 @@
 
 > Status: **Draft** · Date: 2026-08-31 (revised after adversarial review)
 > Depends on: RFC-0001 (teams), RFC-0002 (events/finalize)
-> Decisions: ADR-0001 (co-location), ADR-0003 (fan-out at finalize)
+> Decisions: ADR-0001 (co-location), ADR-0009 (finalize stamping)
 > Open product choices: §Open decisions (below)
 
 ## 1. Background
@@ -10,9 +10,9 @@
 A **circuit** is one-to-many events across which teams earn points, with a **main
 event/championship** at the end that the top teams qualify for. Point systems and roster-stability
 rules vary by circuit and are **configurable per circuit**. This RFC wires points into the event
-finalize fan-out (RFC-0002 §6) using **idempotent per-event contribution items** (ADR-0003 review
-fix — safer than read-modify-write standing rows), and models roster eligibility so it cannot be
-gamed by late roster additions.
+finalize stamping transaction (RFC-0002 §6, ADR-0009) using **idempotent per-event contribution
+items** (review fix — safer than read-modify-write standing rows), and models roster eligibility so
+it cannot be gamed by late roster additions.
 
 ## 2. Goals / Non-goals (v1)
 
@@ -77,18 +77,17 @@ settings:
     declines: NEXT_ELIGIBLE       # resolved (D20): admin-managed — next-eligible suggestion, admin confirms
 ```
 
-## 5. Points flow (the finalize fan-out)
+## 5. Points flow (the finalize stamping transaction)
 
-When a member event finalizes (RFC-0002 §6, ADR-0003):
+When a member event finalizes (RFC-0002 §6, ADR-0009):
 
 1. Compute the bracket-adjusted `placement` per team, plus which teams are **DNS / never placed**
    (zero completed/forfeit games → RFC-0002 §5). **DNS teams earn no points.**
 2. For each placed circuit-entrant team: `points = settings.points.placement[p]`; `eligible = team's
    event snapshot size ≥ minRosterSize` (the `rosterSizeAtEvent` frozen at finalize).
 3. **Write a `CIRCUIT_CONTRIBUTION#…` item per (event, team) — idempotent keyed put** (no
-   accumulate-then-write, no races between concurrent finalizes/recomputes). Part of the
-   post-transaction fan-out with `UnprocessedItems` retry, **tracked by the `projectionsStatus:
-   PENDING → COMPLETE` / `projectionsCompleteAt` marker lifecycle** (RFC-0002 §6).
+   accumulate-then-write, no races between concurrent finalizes/recomputes), in finalize's single
+   bounded stamping transaction (RFC-0002 §6, ADR-0009), **tracked by `finalizeCompleteAt`**.
 4. **Recompute = RFC-0002's `recompute`** (deterministic re-derivation from committed games + frozen
    snapshots). The circuit `recompute` endpoint (§8) is the alias. Point-table edits, backfills, and
    membership changes trigger recompute — which must **delete stale contribution items** for removed
@@ -160,7 +159,7 @@ main-event-as-member-event; mid-season joins (points from join date, default).
 
 - [ ] `circuits/` domain: Circuit, settings, membership, contribution aggregates + ports
 - [ ] Circuit CRUD + membership + team entry endpoints + tests
-- [ ] Contribution writes in finalize fan-out (idempotent, completion-marked) + recompute
+- [ ] Contribution writes in finalize's stamping transaction (idempotent) + recompute
 - [ ] Eligibility from frozen snapshots (`rosterSizeAtEvent`), read-time modes
 - [ ] Qualification + shortfall/declines handling; main-event guard
 - [ ] Frontend circuit pages + admin builder

@@ -3,6 +3,10 @@
 > Status: **Accepted** · Date: 2026-08-31
 > Motivation: round-4 threat model found live-code defects that predate (and are not fixed by)
 > the RS256 migration in [ADR-0007](0007-user-jwts-rs256.md).
+>
+> Update 2026-09: item 1 (logout revocation) is fixed — `DELETE /login/session` accepts the
+> refresh cookie (OR'd with the access cookie) and deletes the record when presented (INT-6).
+> Items 2–3 remain open.
 
 ## Context
 
@@ -63,7 +67,7 @@ migration):
 
 ## Checklist
 
-- [ ] `DELETE /login/session` revokes the refresh record (cookie-scoped or principal-indexed)
+- [x] `DELETE /login/session` revokes the refresh record (cookie-scoped or principal-indexed)
 - [ ] Atomic refresh rotation + `replacedByTokenID` reuse detection (alert + kill both)
 - [ ] De-admin purge on `/adminEmails` change
 - [ ] Restricted Stripe keys for event-registration/donation; drop unused donation endpoint secret

@@ -3,7 +3,7 @@
 > Status: **Draft**
 > Date: 2026-08-31
 > Depends on: RFC-0002 (history tab only; bio + directory ship first)
-> Related: [ADR-0002](../adr/0002-player-reference-validation.md) (reference + snapshot), [ADR-0003](../adr/0003-player-results-projection.md) (derived results)
+> Related: [ADR-0002](../adr/0002-player-reference-validation.md) (reference + snapshot), [ADR-0009](../adr/0009-player-history-participation-index.md) (index + stamping)
 
 ## 1. Background
 
@@ -14,9 +14,10 @@ older `player-profiles-api/DESIGN.md` proposed a Go service following `event-reg
 conventions, with admin-curated `tournamentResults`.
 
 This RFC supersedes that design's data model in one material way: **tournament results are no longer
-stored or curated here** — they are **derived** from competition data owned by the events service,
-written as a per-player projection at event finalize
-([ADR-0003](../adr/0003-player-results-projection.md)). The profiles service owns the player
+stored or curated here** — they are **derived** from competition data owned by the events service
+and stamped at event finalize
+([ADR-0009](../adr/0009-player-history-participation-index.md): player-event index + team-history
+results). The profiles service owns the player
 **master record and bio**. The profile page aggregates both.
 
 ## 2. Goals / Non-goals (v1)
@@ -38,7 +39,8 @@ written as a per-player projection at event finalize
 
 ## 3. Player identity & the events-service boundary
 
-- Canonical id: **UUID** (`id`). Rosters and projections in the events service reference this UUID
+- Canonical id: **UUID** (`id`). Rosters and participation records in the events service reference
+  this UUID
   ([ADR-0002](../adr/0002-player-reference-validation.md)).
 - `email` is stored on the master record for identity resolution (matching registrations, future
   self-service). It is not unique-enforced in v1 (legacy data may lack emails).
@@ -116,7 +118,7 @@ The events service exposes player history:
 
 | Method | Path (`event-registration`) | Auth | Description |
 |---|---|---|---|
-| GET | `/events/v1/players/{playerId}/history` | public | All `RESULT#<eventId>#<teamId>` projections + current team memberships for a player (one entry per team per event — a player on two teams in one event keeps both) |
+| GET | `/events/v1/players/{playerId}/history` | public | Player-event history-index entries + current team memberships; stats derived from the event's stamped team-history rows (one entry per team per event — a player on two teams in one event keeps both) — ADR-0009 |
 
 Response shape (aggregated in the SPA with the bio):
 ```yaml
@@ -130,11 +132,17 @@ history:
 The profile page (`icaa.world`) therefore calls two APIs: profiles (bio) + events (history) — the
 established SPA-as-aggregator pattern.
 
-> **Dependency:** the history endpoint exists only once RFC-0002's finalize fan-out writes
-> `RESULT#<eventId>#<teamId>` items. RFC-0005 can ship **bio + directory first** with the Events tab
-> in an explicit empty/pending state; "0005 done" is redefined as "history tab live" only after
-> RFC-0002 lands. Backfilled historical events (RFC-0002 §9) are run through finalize so history
-> exists from day one.
+> **Implementation ([ADR-0009](../adr/0009-player-history-participation-index.md)):** the endpoint
+> queries the player's `HISTORY#` index (written at participation — RFC-0001 §6), then fetches the
+> per-event team-history rows (`TEAM#<teamId>/EVENT#<eventId>`, incl. `result {record, pf, pa,
+> placement}` stamped at finalize) in one `BatchGetItem` — 1 Query + 1 BatchGetItem regardless of
+> event size.
+>
+> **Dependency:** the history endpoint's stats require RFC-0002's finalize stamping of team-history
+> `result` rows (the index rows themselves exist from participation, RFC-0001 §6). RFC-0005 can ship
+> **bio + directory first** with the Events tab in an explicit empty/pending state; "0005 done" is
+> redefined as "history tab live" only after RFC-0002 lands. Backfilled historical events
+> (RFC-0002 §9) are run through finalize so history exists from day one.
 
 ## 7. Seed / migration
 
