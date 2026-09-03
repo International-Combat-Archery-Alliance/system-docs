@@ -1,6 +1,8 @@
 # ADR-0006: Service-to-service HTTP with JWT machine auth (RS256)
 
 > Status: **Accepted** · Date: 2026-08-31 (revised after round-2 adversarial review)
+> Amendment **proposed** 2026-09-03 (MA-6 / INT-42, audiences map) — see
+> §Amendment at the end; original text below is unchanged.
 > Applies to: ADR-0002 (the first consumer: player existence verification from `event-registration`
 > → `player-profiles-api`)
 > Related: [ADR-0007](0007-user-jwts-rs256.md) — user tokens migrate to the same RS256/JWKS model
@@ -218,3 +220,34 @@ the bypass:
 before any crypto work. `secretRounds[]` supports rotation with a grace window; revocation = mark
 inactive/delete. Outstanding tokens bounded by the 5-minute TTL; the caller's 80%-TTL refresh and
 401-invalidate-retry absorb skew.
+
+---
+
+## Amendment (proposed 2026-09-03, MA-6 / INT-42): audiences map + operator-delivered secrets
+
+Supersedes the fixed-audience and SSM-provisioned-secret paragraphs above (§Transport & identity,
+§Tokens claims/`aud`, rotation runbook, deploy order §§1–2). Rationale: one credential per caller
+with per-request audience scales fan-out to a PATCH grant instead of a full provisioning ceremony,
+while preserving single-`aud` replay containment.
+
+* **Record shape.** `CLIENT#<clientId>` holds `secretRounds[]`, **`audiences` (audience →
+  exact scopes)**, `active`. The map may be empty: such a client authenticates but authorizes
+  nowhere (fail-closed identity, useful before a callee's scope exists). Scope strings keep the
+  `m2m:` prefix (namespacing vs user roles); audience names are `[a-z0-9-]{1,64}` with no
+  required suffix — enforcement is exact-match, so the `-api` convention is documentation only.
+* **Exchange takes the audience.** `POST /login/v1/m2m-tokens?audience=<aud>` (required).
+  Malformed aud → 400; unknown/inactive client → dummy bcrypt → 401 (unchanged); then rate-limit;
+  then membership (`aud` ∉ map → uniform 401 `invalid_client`, indistinguishable from a bad
+  secret); then bcrypt; then mint with that entry's scopes. The provisioned set is never
+  oracle-able through this endpoint.
+* **Admin API owns metadata only (DDB-only).** `POST/GET /login/v1/m2m-clients`,
+  `DELETE` (revoke = `active=false`, permanent via API), `POST .../rotate` (prepend round,
+  trim to 2), `PATCH` (full-map audiences replace, secrets untouched, revoked allowed).
+  The API **never writes SSM or otherwise distributes secrets**: the plaintext is returned
+  exactly once and the operator delivers it to the caller. Login therefore gains **no new IAM**
+  beyond the list GSI. Rotation grace still holds: the previous round verifies until the
+  operator delivers the new secret and recycles callers.
+* **What this drops.** Login gets no `ssm:PutParameter` (deploy order §2's PutParameter grants
+  are withdrawn); the "update bcrypt + SSM together" rotation step becomes "API rotate, then
+  operator delivers"; caller-side reads of `/m2m/<clientId>/secret` remain the operator-owned
+  half (unmerged MA-3 caller half is tracked separately).
