@@ -1,8 +1,8 @@
 # ADR-0006: Service-to-service HTTP with JWT machine auth (RS256)
 
 > Status: **Accepted** · Date: 2026-08-31 (revised after round-2 adversarial review)
-> Amendment **proposed** 2026-09-03 (MA-6 / INT-42, audiences map) — see
-> §Amendment at the end; original text below is unchanged.
+> Amendment **accepted** 2026-09-03 (MA-6 / INT-42, audiences map — implemented by
+> login#29/#31/#34) — see §Amendment at the end; original text below is unchanged.
 > Applies to: ADR-0002 (the first consumer: player existence verification from `event-registration`
 > → `player-profiles-api`)
 > Related: [ADR-0007](0007-user-jwts-rs256.md) — user tokens migrate to the same RS256/JWKS model
@@ -223,7 +223,7 @@ inactive/delete. Outstanding tokens bounded by the 5-minute TTL; the caller's 80
 
 ---
 
-## Amendment (proposed 2026-09-03, MA-6 / INT-42): audiences map + operator-delivered secrets
+## Amendment (accepted 2026-09-03, MA-6 / INT-42): audiences map + operator-delivered secrets
 
 Supersedes the fixed-audience and SSM-provisioned-secret paragraphs above (§Transport & identity,
 §Tokens claims/`aud`, rotation runbook, deploy order §§1–2). Rationale: one credential per caller
