@@ -57,6 +57,12 @@ decision lives, plus a couple of cross-cutting notes that aren't per-feature que
   RFC-0001 teams-lite (Team master only, `captainPlayerId` nullable, permissive roster validation
   behind a flag) + admin participation seed (`CONFIRMED` direct, `snapshot=[]`, Stage C deferred);
   RFC-0004 contribution rows and the player history index ship after (additive, re-finalize heals).
+- **D32 — Finalize trio deferred post-MVP** — recorded (2026-10-07): the finalize lock, bounded
+  stamping transaction, recompute, and unfinalize endpoints ship after MVP, together with the
+  team/player history reads and circuit points they serve. Rationale: no MVP consumer reads
+  stamps (player history + circuits deferred), and the live schedule/standings cards work
+  without it; scores stay admin-editable until points attach, when the lock starts to matter.
+  Revisit as one workstream (lock + stamps + history reads).
 
 ## How to use this
 
