@@ -53,6 +53,10 @@ decision lives, plus a couple of cross-cutting notes that aren't per-feature que
   Finalize is synchronous and bounded (lock + one stamping transaction, ADR-0009), so an
   interruption is a visible request error and `recompute` heals idempotently; visibility is
   `finalizeCompleteAt` + admin-UI state. No monitoring infrastructure for finalize.
+- **D31 — Roster-free games MVP** — recorded (2026-10-07, INT-44..54): RFC-0002 ships on
+  RFC-0001 teams-lite (Team master only, `captainPlayerId` nullable, permissive roster validation
+  behind a flag) + admin participation seed (`CONFIRMED` direct, `snapshot=[]`, Stage C deferred);
+  RFC-0004 contribution rows and the player history index ship after (additive, re-finalize heals).
 
 ## How to use this
 

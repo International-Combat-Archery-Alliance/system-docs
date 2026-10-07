@@ -63,6 +63,8 @@ No per-player stat rows exist. Two coupled pieces:
   (unfinalize → edit → finalize) propagates to every page automatically — nothing to reconcile.
 - **Mid-event**: index rows exist from participation; stats appear once finalize stamps them
   (history tab shows an explicit pending state until then — display decision, RFC-0005 §6).
+  MVP: an empty `snapshot` writes zero index rows; re-finalize after backfill heals (no stat
+  migration needed).
 - **Placement authority unchanged** (RFC-0003 §6): placement is derived once at finalize and stamped
   on team-history rows; circuits and player history both consume it from there.
 - **GSI rule unaffected**: index and team-history items carry no GSI attributes (RFC-0001/0002).

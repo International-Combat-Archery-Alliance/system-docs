@@ -186,6 +186,9 @@ migration tool only.
 
 **Stage A (additive, zero risk to payments):** teams API + admin UI + `TEAM_NAME` GSI (all 3 schema
 sources) + roster-write validation (machine token).
+MVP exception (INT-44..54): ship teams-lite first — `captainPlayerId` nullable, roster-write
+validation permissive behind an explicit flag (`snapshot=[]` allowed, size-check default-pass);
+strict fail-closed returns with RFC-0005 (ADR-0002).
 **Stage B (backfill):** run §9 (after RFC-0005 email pass), verify, London merge report.
 **Stage C (registration flow):** participation lifecycle transaction changes (intent/paid/expired +
 regression tests), then the SPA form swap when teams are trustworthy.

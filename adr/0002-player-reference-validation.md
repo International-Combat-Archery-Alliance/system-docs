@@ -39,6 +39,9 @@ ever sits on a hot path.
   writes** — acceptable; admin ops can fail loudly and be retried.
 - Local dev: the events service uses a `LOCAL` mode (dev machine token / local login) so the auth
   header path is exercised without prod secrets ([ADR-0006](0006-internal-http-machine-auth.md)).
+- MVP exception (roster-free, INT-44..54): roster writes run permissive (unverified snapshots
+  allowed, `snapshot=[]`) behind an explicit flag; flip to fail-closed when `player-profiles-api`
+  lands. Revisit trigger: PP-1..PP-4 + T-A5.
 
 ## Supersedes
 
