@@ -36,6 +36,8 @@ Most state lives in DynamoDB, one table per service, all in `us-east-1`. A coupl
 | Item type | Keys | Notes |
 |---|---|---|
 | `REFRESH_TOKEN` | `PK=REFRESH_TOKEN#<id>`, `SK=REFRESH_TOKEN#<id>` | Stores `userEmail`, `picture`, `roles`, `expiresAt` (30 d), `ttl`. Deleted on rotation/logout. |
+| `CLIENT#` | `PK=CLIENT#<clientId>`, `SK=CLIENT#<clientId>` | Machine-client record: bcrypt `secretRounds[]`, `audiences` (audience → exact scopes), `active`. `GSI1PK=M2M_CLIENTS`, `GSI1SK=CLIENT#<id>` backs the admin list. Managed via the admin API (INT-42); secrets never stored in plaintext. |
+| `RATE#` | `PK=RATE#<clientId>`, `SK=RATE#<clientId>` | m2m exchange fixed-window counter (`windowCount`, `windowEnd`, `ttl`). |
 
 ### `voting-api` — created by SAM (voting-api), TTL enabled
 | Item type | Keys | Notes |
@@ -64,6 +66,7 @@ Most state lives in DynamoDB, one table per service, all in `us-east-1`. A coupl
 | `/machineJwtSigningKeys` | login (machine-token RS256 signing, `machine-*` kids, login-only IAM) |
 | `/jwtSigningKeys` | retired — the pre-RS256 symmetric secret, tombstoned after cutover ([ADR-0007](../adr/0007-user-jwts-rs256.md)) |
 | `/adminEmails` | login (role assignment) |
+| `/m2m/<clientId>/secret` | caller services (machine secret, read at startup; written manually by the operator — INT-42) |
 | `/newrelic-license-key` | all services (OTLP export) |
 | `/stripeSecretKey`, `/stripeEndpointSecret` | donation-api, event-registration |
 | `/cfTurnstileSecretKey` | event-registration, mailing-list-api, voting-api |
