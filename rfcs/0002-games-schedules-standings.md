@@ -3,10 +3,11 @@
 > Status: **Draft** · Date: 2026-08-31 (revised after adversarial review)
 > Depends on: RFC-0001 (teams & event participation); RFC-0004 contribution rows (in the finalize
 > stamping transaction, §11)
-> MVP staging (INT-44..54): ships on RFC-0001 teams-lite (Team master only, no roster validation —
+> MVP staging (INT-44..55): ships on RFC-0001 teams-lite (Team master only, no roster validation —
 > ADR-0002 permissive exception) + admin participation seed (`CONFIRMED` direct, `snapshot=[]`,
 > bypasses Stage C Stripe flow); RFC-0004 contribution rows and player history index deferred
-> (additive, re-finalize heals).
+> (additive, re-finalize heals). Finalize trio (lock/stamp/recompute/unfinalize) deferred
+> post-MVP (D32): MVP closes at the games surface, scores stay admin-editable.
 > Decisions: ADR-0009 (history/placement stamping), ADR-0005 (generate-then-edit)
 > Open rule choices: §Open decisions (below)
 
@@ -244,9 +245,11 @@ Ordering matters:
 
 ## 11. Checklist
 
-**MVP staging (roster-free, INT-44..54):** Phase 1 teams-lite + RR + handlers/standings/finalize +
+**MVP staging (roster-free, INT-44..55):** Phase 1 teams-lite + RR + handlers/standings +
 UI → Phase 2 Swiss (INT-48) → Phase 3 backfill + history (INT-53). RFC-0004 contribution rows and
-the player history index are deferred (additive, no stub needed; re-finalize heals).
+the player history index are deferred (additive, no stub needed; re-finalize heals). The
+finalize trio below is deferred post-MVP with them (D32): MVP closes at the games surface and
+scores stay admin-editable until points attach.
 
 - [ ] `Event.status` (optional in spec, preserved in `UpdateEvent`) + transitions
 - [ ] `games/Game` aggregate + dynamo adapter + handlers (CRUD, generate, standings)
@@ -255,7 +258,7 @@ the player history index are deferred (additive, no stub needed; re-finalize hea
 - [ ] Standings derivation + DNS exclusion + **CONFIRMED-participation-only** placement fixtures
 - [ ] Finalize lock + bounded stamping transaction (`result` stamps + contributions +
       `finalizeCompleteAt`); recompute (refuses unless FINALIZED); unfinalize (audited, clears
-      stamps) — ADR-0009
+      stamps) — ADR-0009 — **deferred post-MVP (D32)**
 - [ ] No CloudWatch alarm for finalize: synchronous/bounded; visibility = request error + admin UI
       state + idempotent re-run (decision D30)
 - [ ] Circuit contribution rows in the finalize stamping transaction (RFC-0004 §5) — additive, no

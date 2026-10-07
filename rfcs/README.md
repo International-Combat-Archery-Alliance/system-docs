@@ -49,8 +49,9 @@ Staged, from adversarial review:
    tab is explicit "pending until 0002". Includes the **email-backfill pass** (hard prerequisite for
    0001's migration).
 2. **0001 Stage A** — additive teams API + admin UI + `TEAM_NAME` GSI. No registration-flow changes.
-2a. **0002 MVP (roster-free, INT-44..54)** — teams-lite + RR + handlers/standings/finalize + UI;
-   Swiss then backfill + history follow. Stage C and 0004 rows deferred.
+2a. **0002 MVP (roster-free, INT-44..55)** — teams-lite + RR/Swiss + handlers/standings +
+   UI, closing at the games surface (finalize trio deferred post-MVP, D32); backfill + history
+   follow. Stage C and 0004 rows deferred.
 3. **0001 Stage B — backfill** legacy registrations → teams (after 0005 email pass).
 4. **0002** — Event.status, games CRUD, generators, standings, finalize (**lock + one bounded
    stamping transaction**; 0004's contribution rows live there — additive, no stub needed).
