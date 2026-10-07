@@ -3,6 +3,10 @@
 > Status: **Draft** · Date: 2026-08-31 (revised after adversarial review)
 > Depends on: RFC-0001 (teams & event participation); RFC-0004 contribution rows (in the finalize
 > stamping transaction, §11)
+> MVP staging (INT-44..54): ships on RFC-0001 teams-lite (Team master only, no roster validation —
+> ADR-0002 permissive exception) + admin participation seed (`CONFIRMED` direct, `snapshot=[]`,
+> bypasses Stage C Stripe flow); RFC-0004 contribution rows and player history index deferred
+> (additive, re-finalize heals).
 > Decisions: ADR-0009 (history/placement stamping), ADR-0005 (generate-then-edit)
 > Open rule choices: §Open decisions (below)
 
@@ -77,7 +81,9 @@ than building schedules by hand.
 closed (past `registrationCloseTime`) and the event moved to `IN_PROGRESS` to generate. **Input is
 the event's `CONFIRMED` (paid) participation roster only** — ever-`REGISTERED`/unpaid rows are
 excluded, so schedules, standings, finalize, and circuit points can never include a team that didn't
-pay (RFC-0001 §6 lifecycle). Refuses if games exist unless `replace: true` and no game is
+pay (RFC-0001 §6 lifecycle). MVP (INT-51): `CONFIRMED` rows may be created by the admin
+participation seed without the Stage C payment flow; the legacy inline-`players[]` flow stays
+byte-for-byte untouched. Refuses if games exist unless `replace: true` and no game is
 `COMPLETED` **or `FORFEIT`/`DOUBLE_FORFEIT`** (a forfeit is a result — never destroyed by replace).
 
 **Round robin** (`format: ROUND_ROBIN`):
@@ -237,6 +243,10 @@ Ordering matters:
 - Late team add preserving results (RFC-0001 `late-team` flow); cross-phase ordering on the schedule.
 
 ## 11. Checklist
+
+**MVP staging (roster-free, INT-44..54):** Phase 1 teams-lite + RR + handlers/standings/finalize +
+UI → Phase 2 Swiss (INT-48) → Phase 3 backfill + history (INT-53). RFC-0004 contribution rows and
+the player history index are deferred (additive, no stub needed; re-finalize heals).
 
 - [ ] `Event.status` (optional in spec, preserved in `UpdateEvent`) + transitions
 - [ ] `games/Game` aggregate + dynamo adapter + handlers (CRUD, generate, standings)
