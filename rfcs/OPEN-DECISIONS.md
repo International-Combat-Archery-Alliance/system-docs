@@ -35,6 +35,8 @@ decision lives, plus a couple of cross-cutting notes that aren't per-feature que
 | D24 | Post-launch team merges | RFC-0001 [§Open decisions](0001-teams-and-rosters.md#open-decisions) |
 | D25 | Public player pages | RFC-0005 [§Open decisions](0005-player-profiles.md#open-decisions) |
 | D26 | Free agents | RFC-0001 [§Open decisions](0001-teams-and-rosters.md#open-decisions) |
+| D32 | Event media storage shape | RFC-0006 [§Open decisions](0006-event-media-and-page-redesign.md#open-decisions) |
+| D33 | Legacy event media fields | RFC-0006 [§Open decisions](0006-event-media-and-page-redesign.md#open-decisions) |
 
 ## Cross-cutting (not per-feature product questions)
 

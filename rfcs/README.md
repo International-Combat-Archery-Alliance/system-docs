@@ -40,6 +40,7 @@ notes (D27/D28).
 | 0003 | [Playoffs](0003-playoffs.md) | Draft | 0001, 0002 |
 | 0004 | [Circuits](0004-circuits.md) | Draft | 0001, 0002 (contribution rows in the finalize stamping transaction) |
 | 0005 | [Player Profiles](0005-player-profiles.md) | Draft | 0002 (history tab, after RFC-0002 ships) |
+| 0006 | [Event Media & Event Page Redesign](0006-event-media-and-page-redesign.md) | Draft | None — additive; uses existing `assets-api` endpoints |
 
 ## Recommended build order
 
